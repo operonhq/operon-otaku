@@ -18,10 +18,10 @@ import { MobileHeader } from './components/dashboard/mobile-header';
 import { LoadingPanelProvider, useLoadingPanel } from './contexts/LoadingPanelContext';
 import { ModalProvider, useModal } from './contexts/ModalContext';
 import { MessageSquare, Info } from 'lucide-react';
-import { resolveCdpUserInfo, type CdpUser } from '@/lib/cdpUser';
+import { resolveCdpUserInfo, type CdpUser } from '@/frontend/lib/cdpUser';
 import { UUID } from '@elizaos/core';
-import { AboutModalContent } from '@/components/about/about-modal-content';
-import { getRandomAvatar } from '@/lib/utils';
+import { AboutModalContent } from '@/frontend/components/about/about-modal-content';
+import { getRandomAvatar } from '@/frontend/lib/utils';
 
 // Available default avatars for deterministic randomization
 const DEFAULT_AVATARS = [
@@ -796,10 +796,7 @@ function AppContent({
             />
           ) : currentView === 'leaderboard' ? (
             agentId ? (
-              <LeaderboardPage 
-                agentId={agentId as UUID}
-                userId={userId as UUID | undefined}
-              />
+              <LeaderboardPage agentId={agentId as UUID} />
             ) : (
               <div className="flex items-center justify-center h-full">
                 <p className="text-muted-foreground">Loading agent...</p>

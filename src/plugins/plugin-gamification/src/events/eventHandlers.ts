@@ -33,7 +33,7 @@ async function getUserIdFromMessage(runtime: ActionEventPayload['runtime'], mess
       
       // If entity has author_id in metadata, it's an agent-scoped entity - use the actual user ID
       if (entity.metadata?.author_id && typeof entity.metadata.author_id === 'string') {
-        const actualUserId = entity.metadata.author_id as string;
+        const actualUserId = entity.metadata.author_id as UUID;
         // Verify the actual user entity exists
         const userEntity = await runtime.getEntityById(actualUserId);
         if (userEntity) {
@@ -103,7 +103,7 @@ async function recordSwapPoints(payload: ActionEventPayload): Promise<boolean> {
     // Use ?? instead of || to preserve valid zero values
     const volumeUsd = validateVolumeUsd(actionResult?.values?.volumeUsd ?? actionResult?.values?.valueUsd);
 
-    const userId = await getUserIdFromMessage(payload.runtime, payload.messageId, payload.roomId, payload.entityId);
+    const userId = await getUserIdFromMessage(payload.runtime, payload.messageId, payload.roomId);
     if (!userId) return false;
 
     await gamificationService.recordEvent({
@@ -147,7 +147,7 @@ async function recordBridgePoints(payload: ActionEventPayload): Promise<boolean>
     const volumeUsd = validateVolumeUsd(actionResult?.values?.volumeUsd ?? actionResult?.values?.valueUsd);
     const chain = actionResult?.values?.destinationChain ?? actionResult?.values?.toChain;
 
-    const userId = await getUserIdFromMessage(payload.runtime, payload.messageId, payload.roomId, payload.entityId);
+    const userId = await getUserIdFromMessage(payload.runtime, payload.messageId, payload.roomId);
     if (!userId) return false;
 
     await gamificationService.recordEvent({
@@ -193,7 +193,7 @@ async function recordTransferPoints(payload: ActionEventPayload): Promise<boolea
     // Use constant instead of magic number
     if (valueUsd < MIN_TRANSFER_VALUE_USD) return false;
 
-    const userId = await getUserIdFromMessage(payload.runtime, payload.messageId, payload.roomId, payload.entityId);
+    const userId = await getUserIdFromMessage(payload.runtime, payload.messageId, payload.roomId);
     if (!userId) return false;
 
     await gamificationService.recordEvent({
@@ -279,7 +279,7 @@ async function recordChatPoints(payload: RunEventPayload): Promise<void> {
     if (!gamificationService) return;
 
     // Resolve actual user ID (handles agent-scoped entities)
-    const userId = await getUserIdFromMessage(payload.runtime, payload.messageId, payload.roomId, payload.entityId);
+    const userId = await getUserIdFromMessage(payload.runtime, payload.messageId, payload.roomId);
     if (!userId) return;
 
     // Store the calculated points in metadata to override BASE_POINTS
@@ -318,7 +318,7 @@ async function recordAgentActionPoints(payload: ActionEventPayload): Promise<voi
       return;
     }
 
-    const userId = await getUserIdFromMessage(payload.runtime, payload.messageId, payload.roomId, payload.entityId);
+    const userId = await getUserIdFromMessage(payload.runtime, payload.messageId, payload.roomId);
     if (!userId) return;
 
     const actionName = payload.content?.actions?.[0] || 'unknown';
@@ -373,6 +373,26 @@ async function recordAccountCreationPoints(payload: EntityPayload): Promise<void
   }
 }
 
+/**
+ * Action names that trigger swap points
+ * - USER_WALLET_SWAP: Legacy CDP swap
+ * - MEE_FUSION_SWAP: Biconomy gasless cross-chain swap
+ */
+const SWAP_ACTIONS = ['USER_WALLET_SWAP', 'MEE_FUSION_SWAP'];
+
+/**
+ * Action names that trigger bridge points
+ * - EXECUTE_RELAY_BRIDGE, RELAY_BRIDGE: Relay bridge actions
+ */
+const BRIDGE_ACTIONS = ['EXECUTE_RELAY_BRIDGE', 'RELAY_BRIDGE'];
+
+/**
+ * Action names that trigger transfer points
+ * - USER_WALLET_TOKEN_TRANSFER, USER_WALLET_NFT_TRANSFER: Legacy CDP transfers
+ * - BICONOMY_WITHDRAW: Biconomy withdrawal to external address
+ */
+const TRANSFER_ACTIONS = ['USER_WALLET_TOKEN_TRANSFER', 'USER_WALLET_NFT_TRANSFER', 'BICONOMY_WITHDRAW'];
+
 export const gamificationEvents: PluginEvents = {
   [EventType.ACTION_COMPLETED]: [
     async (payload: ActionEventPayload) => {
@@ -380,11 +400,11 @@ export const gamificationEvents: PluginEvents = {
 
       // Award specific action points
       let handled = false;
-      if (actionName === 'USER_WALLET_SWAP') {
+      if (actionName && SWAP_ACTIONS.includes(actionName)) {
         handled = await recordSwapPoints(payload);
-      } else if (actionName === 'EXECUTE_RELAY_BRIDGE' || actionName === 'RELAY_BRIDGE') {
+      } else if (actionName && BRIDGE_ACTIONS.includes(actionName)) {
         handled = await recordBridgePoints(payload);
-      } else if (actionName === 'USER_WALLET_TOKEN_TRANSFER' || actionName === 'USER_WALLET_NFT_TRANSFER') {
+      } else if (actionName && TRANSFER_ACTIONS.includes(actionName)) {
         handled = await recordTransferPoints(payload);
       }
 

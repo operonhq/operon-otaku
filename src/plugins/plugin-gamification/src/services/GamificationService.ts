@@ -3,9 +3,9 @@ import {
   type IAgentRuntime,
   type UUID,
   logger,
-  DatabaseAdapter,
 } from '@elizaos/core';
 import { eq, and, gte, desc, sql } from 'drizzle-orm';
+import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import {
   gamificationEventsTable,
   pointBalancesTable,
@@ -28,16 +28,16 @@ import type {
   LeaderboardEntry,
 } from '../types';
 
-interface RuntimeWithDb extends IAgentRuntime {
-  db?: DatabaseAdapter;
+interface RuntimeWithDb {
+  db?: PgDatabase<PgQueryResultHKT>;
 }
 
 export class GamificationService extends Service {
   static serviceType = 'gamification';
   capabilityDescription = 'Records points for user actions and provides gamification state';
 
-  private getDb(): DatabaseAdapter | undefined {
-    return (this.runtime as RuntimeWithDb).db;
+  private getDb(): PgDatabase<PgQueryResultHKT> | undefined {
+    return (this.runtime as unknown as RuntimeWithDb).db;
   }
 
   /**
@@ -204,11 +204,11 @@ export class GamificationService extends Service {
 
     // Filter out agents and limit results
     const balances = allBalances
-      .filter((balance) => !this.isAgent(balance.userId))
+      .filter((balance) => !this.isAgent(balance.userId as UUID))
       .slice(0, limit);
 
     // Batch fetch entity data for display names and avatars (avoids N+1 queries)
-    const userIds = balances.map((b) => b.userId);
+    const userIds = balances.map((b) => b.userId as UUID);
     const entityMap = new Map<UUID, { displayName?: string; avatarUrl?: string }>();
     
     // Fetch all entities in parallel (single batch)
@@ -218,7 +218,8 @@ export class GamificationService extends Service {
         if (entity) {
           entityMap.set(userId, {
             displayName: (entity.metadata?.displayName as string) || (entity.names?.[0] as string),
-            avatarUrl: entity.metadata?.avatarUrl as string | undefined,
+            // Check both 'avatar' and 'avatarUrl' for backwards compatibility
+            avatarUrl: (entity.metadata?.avatar as string) || (entity.metadata?.avatarUrl as string) || undefined,
           });
         }
       } catch (error) {
@@ -230,13 +231,14 @@ export class GamificationService extends Service {
     await Promise.all(entityPromises);
 
     // Build leaderboard entries using pre-fetched entity data
-    const entries = balances.map((balance: { userId: UUID; points: number; level: number }, index: number) => {
+    const entries = balances.map((balance, index: number) => {
+      const balanceUserId = balance.userId as UUID;
       const levelInfo = this.getLevelInfo(balance.points);
-      const entityData = entityMap.get(balance.userId);
+      const entityData = entityMap.get(balanceUserId);
 
       return {
         rank: index + 1,
-        userId: balance.userId,
+        userId: balanceUserId,
         points: balance.points,
         level: levelInfo.level,
         levelName: levelInfo.name,
@@ -276,7 +278,7 @@ export class GamificationService extends Service {
       .where(gte(pointsColumn, userBalance.points));
 
     // Filter out agents and count
-    const rank = allBalances.filter((balance) => !this.isAgent(balance.userId)).length;
+    const rank = allBalances.filter((balance) => !this.isAgent(balance.userId as UUID)).length;
 
     return rank;
   }
@@ -493,7 +495,7 @@ export class GamificationService extends Service {
       .returning();
 
     return {
-      userId: updated.userId,
+      userId: updated.userId as UUID,
       allTimePoints: updated.allTimePoints,
       weeklyPoints: updated.weeklyPoints,
       streakDays: updated.streakDays,
@@ -528,7 +530,7 @@ export class GamificationService extends Service {
     }
 
     const levelInfo = this.getLevelInfo(balance.allTimePoints);
-    return { ...balance, levelName: levelInfo.name };
+    return { ...balance, userId: balance.userId as UUID, levelName: levelInfo.name };
   }
 
   private async checkFirstChainBonus(userId: UUID, chain: string): Promise<void> {

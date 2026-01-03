@@ -23,6 +23,9 @@ import { walletStateProvider } from "./providers/walletState";
 // Types
 export type { CdpNetwork } from "./types";
 
+// Context Matching - re-export for external use
+export { shouldCdpPluginBeInContext, cdpKeywordPatterns } from "./matcher";
+
 /**
  * CDP Plugin
  * 
@@ -48,7 +51,9 @@ export const cdpPlugin: Plugin = {
     "Coinbase Developer Platform plugin providing authenticated EVM account creation, token transfers, NFT transfers, swaps, and x402 paid API requests via CDP SDK",
   evaluators: [],
   providers: [walletStateProvider],
-  actions: [cdpWalletInfo, cdpWalletCheckBalance, cdpWalletTokenTransfer, cdpWalletNftTransfer, cdpWalletSwap, cdpResolveEns, cdpTxExplorerLink, cdpCheckTxConfirmation],
+  actions: [cdpWalletInfo, cdpWalletCheckBalance, cdpWalletTokenTransfer, cdpWalletNftTransfer, 
+    // cdpWalletSwap, 
+    cdpResolveEns, cdpTxExplorerLink, cdpCheckTxConfirmation],
   services: [CdpService],
 };
 

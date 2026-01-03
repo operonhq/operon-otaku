@@ -5,6 +5,7 @@
     "declarationDir": "./dist",
     "declaration": true,
     "declarationMap": true,
+    "emitDeclarationOnly": true,
     "skipLibCheck": true,
     "noEmit": false,
     "allowImportingTsExtensions": false,

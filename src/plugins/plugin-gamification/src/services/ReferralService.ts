@@ -3,24 +3,24 @@ import {
   type IAgentRuntime,
   type UUID,
   logger,
-  DatabaseAdapter,
 } from '@elizaos/core';
 import { eq, and } from 'drizzle-orm';
+import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import { referralCodesTable, gamificationEventsTable } from '../schema';
 import { GamificationEventType } from '../constants';
 import type { ReferralCode, ReferralStats } from '../types';
 import { GamificationService } from './GamificationService';
 
-interface RuntimeWithDb extends IAgentRuntime {
-  db?: DatabaseAdapter;
+interface RuntimeWithDb {
+  db?: PgDatabase<PgQueryResultHKT>;
 }
 
 export class ReferralService extends Service {
   static serviceType = 'referral';
   capabilityDescription = 'Manages referral codes and attribution';
 
-  private getDb(): DatabaseAdapter | undefined {
-    return (this.runtime as RuntimeWithDb).db;
+  private getDb(): PgDatabase<PgQueryResultHKT> | undefined {
+    return (this.runtime as unknown as RuntimeWithDb).db;
   }
 
   static async start(runtime: IAgentRuntime): Promise<ReferralService> {
@@ -153,7 +153,7 @@ export class ReferralService extends Service {
     const gamificationService = this.runtime.getService('gamification') as GamificationService;
     if (gamificationService) {
       await gamificationService.recordEvent({
-        userId: referrer.userId,
+        userId: referrer.userId as UUID,
         actionType: GamificationEventType.REFERRAL_SIGNUP,
         metadata: { referredUserId: userId },
       });
@@ -222,9 +222,9 @@ export class ReferralService extends Service {
 
     // Award activation bonus to referrer
     const gamificationService = this.runtime.getService('gamification') as GamificationService;
-    if (gamificationService) {
+    if (gamificationService && userCode.referrerId) {
       await gamificationService.recordEvent({
-        userId: userCode.referrerId,
+        userId: userCode.referrerId as UUID,
         actionType: GamificationEventType.REFERRAL_ACTIVATION,
         metadata: { activatedUserId: userId },
       });
@@ -232,18 +232,15 @@ export class ReferralService extends Service {
   }
 
   /**
-   * Generate unique referral code from user ID using cryptographically secure randomness
+   * Generate deterministic referral code from user ID using SHA-256 hash
+   * Same userId always produces the same code, making codes recoverable
    */
   private generateReferralCode(userId: UUID): string {
-    // Use first 8 characters of UUID + cryptographically secure random suffix
-    const uuidPart = userId.replace(/-/g, '').substring(0, 8).toUpperCase();
-    
-    // Use crypto.randomBytes for secure randomness instead of Math.random()
     const crypto = require('crypto');
-    const randomBytes = crypto.randomBytes(3); // 3 bytes = 6 hex chars
-    const randomSuffix = randomBytes.toString('hex').toUpperCase();
-    
-    return `${uuidPart}${randomSuffix}`;
+    // Hash the userId to get deterministic output
+    const hash = crypto.createHash('sha256').update(userId).digest('hex').toUpperCase();
+    // Use first 12 characters of the hash for a compact, unique code
+    return hash.substring(0, 12);
   }
 }
 

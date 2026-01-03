@@ -65,6 +65,11 @@ export class CdpService extends Service {
   /**
    * Get Viem wallet and public clients for a CDP account on a specific network
    * Delegates to transaction manager
+   * 
+   * @param options.accountName - CDP account name
+   * @param options.network - Network (defaults to 'base')
+   * @returns Object containing address, walletClient, publicClient, and cdpAccount
+   *   - cdpAccount: Raw CDP EvmAccount with native signing methods (use for EIP-712 typed data)
    */
   async getViemClientsForAccount(options: {
     accountName: string;
@@ -73,6 +78,21 @@ export class CdpService extends Service {
     address: `0x${string}`;
     walletClient: any;
     publicClient: any;
+    cdpAccount: {
+      address: string;
+      signTypedData: (params: {
+        domain: {
+          name?: string;
+          version?: string;
+          chainId?: number | bigint;
+          verifyingContract?: `0x${string}`;
+          salt?: `0x${string}`;
+        };
+        types: Record<string, Array<{ name: string; type: string }>>;
+        primaryType: string;
+        message: Record<string, unknown>;
+      }) => Promise<`0x${string}`>;
+    };
   }> {
     return this.transactionManager.getViemClientsForAccount(options);
   }

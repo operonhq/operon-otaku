@@ -253,6 +253,11 @@ export class CdpTransactionManager {
   /**
    * Construct viem walletClient and publicClient for a given CDP account and network
    * Note: Uses toAccount() to convert CDP server-managed wallet for viem compatibility
+   * 
+   * @param options.accountName - CDP account name
+   * @param options.network - Network (defaults to 'base')
+   * @returns Object containing address, walletClient, publicClient, and cdpAccount
+   *   - cdpAccount: Raw CDP EvmAccount with native signing methods (use for EIP-712 typed data)
    */
   async getViemClientsForAccount(options: {
     accountName: string;
@@ -261,6 +266,21 @@ export class CdpTransactionManager {
     address: `0x${string}`;
     walletClient: WalletClient;
     publicClient: PublicClient;
+    cdpAccount: {
+      address: string;
+      signTypedData: (params: {
+        domain: {
+          name?: string;
+          version?: string;
+          chainId?: number | bigint;
+          verifyingContract?: `0x${string}`;
+          salt?: `0x${string}`;
+        };
+        types: Record<string, Array<{ name: string; type: string }>>;
+        primaryType: string;
+        message: Record<string, unknown>;
+      }) => Promise<`0x${string}`>;
+    };
   }> {
     const client = this.getCdpClient();
 
@@ -292,7 +312,27 @@ export class CdpTransactionManager {
       transport: http(resolvedRpcUrl),
     }) as WalletClient;
 
-    return { address, walletClient, publicClient };
+    // Return raw CDP account for native EIP-712 signing (bypasses RPC)
+    return { 
+      address, 
+      walletClient, 
+      publicClient,
+      cdpAccount: account as {
+        address: string;
+        signTypedData: (params: {
+          domain: {
+            name?: string;
+            version?: string;
+            chainId?: number | bigint;
+            verifyingContract?: `0x${string}`;
+            salt?: `0x${string}`;
+          };
+          types: Record<string, Array<{ name: string; type: string }>>;
+          primaryType: string;
+          message: Record<string, unknown>;
+        }) => Promise<`0x${string}`>;
+      },
+    };
   }
 
   // ============================================================================

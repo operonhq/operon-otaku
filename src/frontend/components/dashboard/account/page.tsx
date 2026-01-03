@@ -1,15 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import DashboardPageLayout from "@/components/dashboard/layout";
-import DashboardCard from "@/components/dashboard/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { useLoadingPanel } from "@/contexts/LoadingPanelContext";
-import { useModal } from "@/contexts/ModalContext";
-import { useCDPWallet } from '@/hooks/useCDPWallet';
-import { elizaClient } from "@/lib/elizaClient";
+import DashboardPageLayout from "@/frontend/components/dashboard/layout";
+import DashboardCard from "@/frontend/components/dashboard/card";
+import { Button } from "@/frontend/components/ui/button";
+import { Input } from "@/frontend/components/ui/input";
+import { Label } from "@/frontend/components/ui/label";
+import { Badge } from "@/frontend/components/ui/badge";
+import { useLoadingPanel } from "@/frontend/contexts/LoadingPanelContext";
+import { useModal } from "@/frontend/contexts/ModalContext";
+import { useCDPWallet } from '@/frontend/hooks/useCDPWallet';
+import { elizaClient } from "@/frontend/lib/elizaClient";
 import { Copy, Check, Upload } from 'lucide-react';
 import { UUID } from '@elizaos/core';
 
@@ -156,25 +156,27 @@ export default function AccountPage({ totalBalance = 0, userProfile, onUpdatePro
   const loadingPanelId = 'account-page'; // Unique ID for this component's loading panels
   const avatarPickerModalId = 'avatar-picker-modal';
 
-  // Fetch user summary from gamification service
+  // Fetch user summary from gamification service (requires authentication)
   const { data: userSummary, isLoading: isLoadingSummary } = useQuery({
-    queryKey: ['userSummary', agentId, userId],
+    queryKey: ['userSummary', agentId],
     queryFn: async () => {
-      if (!agentId || !userId) {
+      if (!agentId) {
         return null;
       }
       try {
-        return await elizaClient.gamification.getUserSummary(agentId, userId);
+        // Auth token is automatically included by elizaClient
+        return await elizaClient.gamification.getUserSummary(agentId);
       } catch (err: any) {
         console.error('[AccountPage] Error fetching user summary:', err);
-        // If 404, return null (user might not have any points yet)
-        if (err?.response?.status === 404 || err?.status === 404) {
+        // If 401/404, return null (user not authenticated or no points yet)
+        if (err?.response?.status === 404 || err?.status === 404 ||
+            err?.response?.status === 401 || err?.status === 401) {
           return null;
         }
         throw err;
       }
     },
-    enabled: !!agentId && !!userId,
+    enabled: !!agentId,
     staleTime: 5 * 60 * 1000, // 5 minutes
     retry: 1,
   });
