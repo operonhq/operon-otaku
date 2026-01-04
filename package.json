@@ -9,7 +9,6 @@
     "@/constants/*": "./dist/constants/*.js"
   },
   "scripts": {
-    "postinstall": "bun run scripts/patch-plugin-sql.ts",
     "dev": "turbo run build && bun run start-server.ts",
     "dev:watch": "turbo run dev --parallel",
     "prestart": "bun run scripts/setup-pg-cron.ts || true",
