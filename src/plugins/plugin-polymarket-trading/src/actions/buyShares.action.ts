@@ -178,10 +178,6 @@ And user wants to buy $5 of YES shares:
 
       logger.info(`[POLYMARKET_BUY_SHARES] Using wallet account: ${userId}, address: ${wallet.walletAddress}`);
 
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/87da556f-f4ce-440d-b841-f0b6f19fd525',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'buyShares.action.ts:232',message:'H3: Wallet identity check',data:{userId,walletAddress:wallet.walletAddress,walletMetadata:wallet.metadata,entityId:message.entityId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
-      // #endregion
-
       const service = runtime.getService(
         PolymarketTradingService.serviceType
       ) as PolymarketTradingService;
@@ -379,10 +375,6 @@ Please add more USDC to your wallet or reduce the trade amount.`,
       // ========================================================================
       logger.info(`[POLYMARKET_BUY_SHARES] Executing market order: $${amount} USDC for ${outcome} shares`);
 
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/87da556f-f4ce-440d-b841-f0b6f19fd525',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'buyShares.action.ts:479',message:'Before placeOrder',data:{userId,tokenId,price,amount,side:'BUY'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
-
       // For market orders, pass the USDC amount directly
       // The trading service uses createAndPostMarketOrder which executes at best available price
       const orderResult = await service.placeOrder(userId, {
@@ -392,10 +384,6 @@ Please add more USDC to your wallet or reduce the trade amount.`,
         side: "BUY",
         usdcAmount: amount, // Pass USDC amount for market order
       });
-
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/87da556f-f4ce-440d-b841-f0b6f19fd525',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'buyShares.action.ts:491',message:'H1/H2: placeOrder result',data:{orderResult,status:orderResult.status,orderId:orderResult.orderId,error:orderResult.error},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1,H2'})}).catch(()=>{});
-      // #endregion
 
       if ((orderResult.status === "FILLED" || orderResult.status === "PLACED") && orderResult.orderId) {
         const isFilled = orderResult.status === "FILLED";

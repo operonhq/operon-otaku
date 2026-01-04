@@ -207,9 +207,6 @@ export class PolymarketTradingService extends Service {
     // Check cache
     const cached = this.userStates.get(userId);
     if (cached) {
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/87da556f-f4ce-440d-b841-f0b6f19fd525',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'trading.service.ts:207',message:'H3: Using CACHED user state',data:{userId,cachedAddress:cached.cdpAccount?.address},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
-      // #endregion
       return cached;
     }
 
@@ -218,16 +215,8 @@ export class PolymarketTradingService extends Service {
       `[PolymarketTradingService] Creating user state for: ${userId.substring(0, 20)}...`
     );
 
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/87da556f-f4ce-440d-b841-f0b6f19fd525',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'trading.service.ts:217',message:'H3: Creating NEW CDP account',data:{userId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
-    // #endregion
-
     const client = this.getCdpClient();
     const cdpAccount = await client.evm.getOrCreateAccount({ name: userId });
-
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/87da556f-f4ce-440d-b841-f0b6f19fd525',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'trading.service.ts:224',message:'H3: CDP account created/retrieved',data:{userId,cdpAccountAddress:cdpAccount.address},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
-    // #endregion
 
     const signer = new CdpSignerAdapter(cdpAccount);
 
@@ -438,10 +427,6 @@ export class PolymarketTradingService extends Service {
   async getAuthenticatedClobClient(userId: string): Promise<ClobClient> {
     const state = await this.getOrCreateUserState(userId);
 
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/87da556f-f4ce-440d-b841-f0b6f19fd525',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'trading.service.ts:401',message:'H3: User state for CLOB client',data:{userId,cdpAccountAddress:state.cdpAccount?.address,signerAddress:state.signer?.address,hasApiCredentials:!!state.apiCredentials},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
-    // #endregion
-
     // Ensure we have API credentials
     if (!state.apiCredentials) {
       const creds = await this.deriveApiCredentials(userId);
@@ -458,10 +443,6 @@ export class PolymarketTradingService extends Service {
       state.signer as any,
       state.apiCredentials
     );
-
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/87da556f-f4ce-440d-b841-f0b6f19fd525',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'trading.service.ts:423',message:'H4: CLOB client created',data:{signerAddress:state.signer?.address,apiKeyPrefix:state.apiCredentials?.apiKey?.substring(0,10)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4'})}).catch(()=>{});
-    // #endregion
 
     return client;
   }
@@ -518,10 +499,6 @@ export class PolymarketTradingService extends Service {
     }
 
     try {
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/87da556f-f4ce-440d-b841-f0b6f19fd525',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'trading.service.ts:480',message:'Placing MARKET order',data:{userId,tokenId:params.tokenId,side:params.side,amount,shares:params.size,price:params.price},timestamp:Date.now(),sessionId:'debug-session'})}).catch(()=>{});
-      // #endregion
-
       const client = await this.getAuthenticatedClobClient(userId);
 
       // Use createAndPostMarketOrder for immediate execution
@@ -533,10 +510,6 @@ export class PolymarketTradingService extends Service {
         side: isBuy ? Side.BUY : Side.SELL,
         feeRateBps: params.feeRateBps ?? 0,
       });
-
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/87da556f-f4ce-440d-b841-f0b6f19fd525',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'trading.service.ts:496',message:'MARKET order response',data:{response},timestamp:Date.now(),sessionId:'debug-session'})}).catch(()=>{});
-      // #endregion
 
       // Log full response for debugging
       logger.info(
@@ -653,10 +626,6 @@ export class PolymarketTradingService extends Service {
     }
 
     try {
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/87da556f-f4ce-440d-b841-f0b6f19fd525',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'trading.service.ts:placeLimitOrder',message:'Placing LIMIT order',data:{userId,tokenId:params.tokenId,side:params.side,size:params.size,price:params.price,tickSize:params.tickSize,negRisk:params.negRisk},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix'})}).catch(()=>{});
-      // #endregion
-
       const client = await this.getAuthenticatedClobClient(userId);
 
       // Use createAndPostOrder for limit orders (GTC - Good Till Cancelled)
@@ -679,10 +648,6 @@ export class PolymarketTradingService extends Service {
         },
         OrderType.GTC
       );
-
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/87da556f-f4ce-440d-b841-f0b6f19fd525',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'trading.service.ts:placeLimitOrder:response',message:'LIMIT order response',data:{response},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix'})}).catch(()=>{});
-      // #endregion
 
       // Log full response for debugging
       logger.info(
