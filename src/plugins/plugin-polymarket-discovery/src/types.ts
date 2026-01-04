@@ -6,11 +6,12 @@
  */
 
 /**
- * Market outcome token (Yes/No binary outcomes)
+ * Market outcome token
+ * Supports both standard Yes/No and alternative outcomes (e.g., team names for sports)
  */
 export interface PolymarketToken {
   token_id: string;
-  outcome: "Yes" | "No";
+  outcome: string;  // "Yes", "No", or alternative outcomes like team names
   price?: number;
   winner?: boolean;
 }
@@ -119,15 +120,21 @@ export interface TokenPrice {
 
 /**
  * Market prices for both outcomes
+ * For non-Yes/No markets, outcome1/outcome2 fields provide actual outcome names
  */
 export interface MarketPrices {
   condition_id: string;
-  yes_price: string;
-  no_price: string;
-  yes_price_formatted: string;
-  no_price_formatted: string;
+  yes_price: string;              // Price for first outcome (or YES if standard market)
+  no_price: string;               // Price for second outcome (or NO if standard market)
+  yes_price_formatted: string;    // Formatted price for first outcome
+  no_price_formatted: string;     // Formatted price for second outcome
   spread: string;
   last_updated: number;
+  // For non-Yes/No markets (e.g., sports with team names)
+  outcome1_name?: string;         // Actual name of first outcome (e.g., "Aston Villa FC")
+  outcome2_name?: string;         // Actual name of second outcome (e.g., "Nottingham Forest FC")
+  outcome1_token_id?: string;     // Token ID for first outcome (for orderbook queries)
+  outcome2_token_id?: string;     // Token ID for second outcome (for orderbook queries)
 }
 
 /**

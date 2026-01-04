@@ -150,14 +150,28 @@ export const getEventDetailAction: Action = {
               text += `   Volume: $${volumeNum.toLocaleString()}\n`;
             }
           }
-          text += `   Condition ID: ${market.conditionId}\n`;
+          text += `   Condition ID: \`${market.conditionId}\`\n`;
+          text += `   Market Slug: \`${market.slug || market.market_slug || 'N/A'}\`\n`;
+
+          // Extract token IDs for trading
+          const tokens = market.tokens || [];
+          const yesToken = tokens.find((t: any) => t.outcome?.toLowerCase() === "yes");
+          const noToken = tokens.find((t: any) => t.outcome?.toLowerCase() === "no");
+
+          if (yesToken) {
+            text += `   yes_token_id: \`${yesToken.token_id}\`\n`;
+          }
+          if (noToken) {
+            text += `   no_token_id: \`${noToken.token_id}\`\n`;
+          }
           text += "\n";
         });
       } else {
         text += "_No markets found for this event._\n\n";
       }
 
-      text += "_Use GET_POLYMARKET_DETAIL to get detailed information about a specific market._";
+      text += "**To Trade:** Use POLYMARKET_BUY_SHARES with token_id (yes_token_id or no_token_id), outcome, amount, and price.\n";
+      text += "_Use GET_POLYMARKET_DETAIL with condition_id for full market info._";
 
       const result: GetEventDetailActionResult = {
         text,
@@ -170,12 +184,20 @@ export const getEventDetailAction: Action = {
           tags: event.tags,
           start_date: event.start_date,
           end_date: event.end_date,
-          markets: event.markets?.map((market) => ({
-            condition_id: market.conditionId,
-            question: market.question,
-            category: market.category,
-            volume: market.volume,
-          })),
+          markets: event.markets?.map((market) => {
+            const tokens = market.tokens || [];
+            const yesToken = tokens.find((t: any) => t.outcome?.toLowerCase() === "yes");
+            const noToken = tokens.find((t: any) => t.outcome?.toLowerCase() === "no");
+            return {
+              condition_id: market.conditionId,
+              question: market.question,
+              category: market.category,
+              volume: market.volume,
+              market_slug: market.slug || market.market_slug,
+              yes_token_id: yesToken?.token_id || null,
+              no_token_id: noToken?.token_id || null,
+            };
+          }),
           market_count: event.markets?.length || 0,
         },
         input: inputParams,

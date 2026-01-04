@@ -3,6 +3,11 @@
  *
  * Get detailed information about a specific prediction market.
  * Returns YES and NO token_ids needed for orderbook queries.
+ * 
+ * Accepts flexible identifiers:
+ * - market_slug: URL-friendly market identifier (e.g., "epl-bou-ars-2026-01-03-ars")
+ * - market_id: Numeric market ID (e.g., "986005")
+ * - condition_id: Hex condition ID as fallback (e.g., "0x907b032a...")
  */
 
 import {
@@ -18,13 +23,22 @@ import { PolymarketService } from "../services/polymarket.service";
 import { shouldPolymarketPluginBeInContext } from "../../matcher";
 
 interface GetMarketDetailParams {
-  conditionId?: string;
-  condition_id?: string;
+  // Primary identifiers (preferred - use from GET_POLYMARKET_EVENT_DETAIL results)
+  market_slug?: string;
+  marketSlug?: string;
+  slug?: string;
+  // Numeric ID
+  market_id?: string;
   marketId?: string;
+  id?: string;
+  // Fallback identifier
+  condition_id?: string;
+  conditionId?: string;
 }
 
 type GetMarketDetailInput = {
-  conditionId?: string;
+  identifier: string;
+  identifierType: "slug" | "id" | "condition_id";
 };
 
 type GetMarketDetailActionResult = ActionResult & { input: GetMarketDetailInput };
@@ -40,13 +54,23 @@ export const getMarketDetailAction: Action = {
     "MARKET_INFORMATION",
   ],
   description:
-    "Get detailed information about a specific Polymarket prediction market. Returns the market's YES and NO token_ids which are required for GET_POLYMARKET_ORDERBOOK queries. Use condition_id from search results to get market details including tradeable token IDs.",
+    "Get detailed information about a specific Polymarket prediction market. Accepts market_slug (like 'epl-bou-ars-2026-01-03-ars'), market_id (numeric), or condition_id (hex). Use the market slug from GET_POLYMARKET_EVENT_DETAIL results - it's the most reliable identifier. Returns token_ids needed for trading.",
 
   parameters: {
-    conditionId: {
+    market_slug: {
       type: "string",
-      description: "Market condition ID (hex string starting with 0x, typically 66 characters). Get this from GET_ACTIVE_POLYMARKETS or SEARCH_POLYMARKETS results.",
-      required: true,
+      description: "Market slug from event details (e.g., 'epl-bou-ars-2026-01-03-ars'). This is the PREFERRED identifier - get it from GET_POLYMARKET_EVENT_DETAIL results.",
+      required: false,
+    },
+    market_id: {
+      type: "string", 
+      description: "Numeric market ID (e.g., '986005'). Alternative to slug.",
+      required: false,
+    },
+    condition_id: {
+      type: "string",
+      description: "Hex condition ID starting with 0x. Use only if slug/id not available.",
+      required: false,
     },
   },
 
@@ -90,47 +114,41 @@ export const getMarketDetailAction: Action = {
       const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
       const params = (composedState?.data?.actionParams ?? {}) as Partial<GetMarketDetailParams>;
 
-      // Extract condition ID (support multiple naming conventions)
-      const conditionId = (params.conditionId || params.condition_id || params.marketId)?.trim();
-
-      if (!conditionId) {
-        const errorMsg = "Market condition ID is required";
+      // Extract identifier with priority: slug > id > condition_id
+      const slug = (params.market_slug || params.marketSlug || params.slug)?.trim();
+      const id = (params.market_id || params.marketId || params.id)?.trim();
+      const conditionId = (params.condition_id || params.conditionId)?.trim();
+      
+      // Determine which identifier to use (priority: slug > id > condition_id)
+      let identifier: string;
+      let identifierType: "slug" | "id" | "condition_id";
+      
+      if (slug) {
+        identifier = slug;
+        identifierType = "slug";
+      } else if (id) {
+        identifier = id;
+        identifierType = "id";
+      } else if (conditionId) {
+        identifier = conditionId;
+        identifierType = "condition_id";
+      } else {
+        const errorMsg = "Market identifier is required. Provide market_slug, market_id, or condition_id";
         logger.error(`[GET_POLYMARKET_DETAIL] ${errorMsg}`);
-        const errorResult: GetMarketDetailActionResult = {
-          text: ` ${errorMsg}. Please provide the market condition ID.`,
+        const errorResult: ActionResult = {
+          text: ` ${errorMsg}. Use GET_POLYMARKET_EVENT_DETAIL first to get market slugs.`,
           success: false,
-          error: "missing_condition_id",
-          input: { conditionId },
+          error: "missing_identifier",
         };
         callback?.({
           text: errorResult.text,
-          content: { error: "missing_condition_id", details: errorMsg },
+          content: { error: "missing_identifier", details: errorMsg },
         });
         return errorResult;
       }
 
-      // Validate condition ID format (should be hex string starting with 0x)
-      // Accept any valid hex ID with length between 40-70 chars to handle various API formats
-      const isValidHex = /^0x[a-fA-F0-9]+$/.test(conditionId);
-      const isValidLength = conditionId.length >= 40 && conditionId.length <= 70;
-
-      if (!isValidHex || !isValidLength) {
-        const errorMsg = `Invalid condition ID format: ${conditionId}. Expected hex string starting with 0x (40-70 chars)`;
-        logger.error(`[GET_POLYMARKET_DETAIL] ${errorMsg}`);
-        const errorResult: GetMarketDetailActionResult = {
-          text: ` ${errorMsg}`,
-          success: false,
-          error: "invalid_condition_id",
-          input: { conditionId },
-        };
-        callback?.({
-          text: errorResult.text,
-          content: { error: "invalid_condition_id", details: errorMsg },
-        });
-        return errorResult;
-      }
-
-      const inputParams: GetMarketDetailInput = { conditionId };
+      const inputParams: GetMarketDetailInput = { identifier, identifierType };
+      logger.info(`[GET_POLYMARKET_DETAIL] Using ${identifierType}: ${identifier}`);
 
       // Get service
       const service = runtime.getService(
@@ -153,12 +171,17 @@ export const getMarketDetailAction: Action = {
         return errorResult;
       }
 
-      // Fetch market details and prices in parallel
-      logger.info(`[GET_POLYMARKET_DETAIL] Fetching details for ${conditionId}`);
-      const [market, prices] = await Promise.all([
-        service.getMarketDetail(conditionId),
-        service.getMarketPrices(conditionId),
-      ]);
+      // Fetch market details
+      logger.info(`[GET_POLYMARKET_DETAIL] Fetching details for ${identifier}`);
+      const market = await service.getMarketDetail(identifier);
+      
+      // Fetch prices using condition_id (required for CLOB API)
+      // Market type uses conditionId (camelCase) or condition_id (snake_case)
+      const marketConditionId = (market as any).conditionId || (market as any).condition_id || market.condition_id;
+      if (!marketConditionId) {
+        throw new Error("Market condition_id not found in response");
+      }
+      const prices = await service.getMarketPrices(marketConditionId);
 
       // Format response
       let text = ` **${market.question}**\n\n`;
@@ -167,9 +190,13 @@ export const getMarketDetailAction: Action = {
         text += `**Description:** ${market.description}\n\n`;
       }
 
+      // Use actual outcome names if available (for sports/alternative markets)
+      const outcome1Label = prices.outcome1_name || "YES";
+      const outcome2Label = prices.outcome2_name || "NO";
+
       text += `**Current Odds:**\n`;
-      text += `   YES: ${prices.yes_price_formatted}\n`;
-      text += `   NO: ${prices.no_price_formatted}\n`;
+      text += `   ${outcome1Label}: ${prices.yes_price_formatted}\n`;
+      text += `   ${outcome2Label}: ${prices.no_price_formatted}\n`;
       text += `   Spread: ${(parseFloat(prices.spread) * 100).toFixed(2)}%\n\n`;
 
       if (market.category) {
@@ -204,20 +231,30 @@ export const getMarketDetailAction: Action = {
         text += `\n**Tags:** ${market.tags.join(", ")}\n`;
       }
 
-      text += `\n**Market ID:** \`${conditionId}\``;
+      // Show market identifiers
+      text += `\n**Market Slug:** \`${market.slug || identifier}\``;
+      if (marketConditionId) {
+        text += `\n**Condition ID:** \`${marketConditionId}\``;
+      }
 
       // Extract and display token IDs for orderbook queries
       const tokens = market.tokens || [];
+      
+      // Check if this is a Yes/No market or alternative outcome market
       const yesToken = tokens.find((t: any) => t.outcome?.toLowerCase() === "yes");
       const noToken = tokens.find((t: any) => t.outcome?.toLowerCase() === "no");
+      const isYesNoMarket = yesToken && noToken;
 
-      if (yesToken || noToken) {
+      if (tokens.length >= 2) {
         text += `\n\n**Tradeable Token IDs** (use with GET_POLYMARKET_ORDERBOOK):\n`;
-        if (yesToken) {
+        if (isYesNoMarket) {
           text += `   YES Token: \`${yesToken.token_id}\`\n`;
-        }
-        if (noToken) {
           text += `   NO Token: \`${noToken.token_id}\`\n`;
+        } else {
+          // For alternative outcome markets (e.g., sports with team names)
+          tokens.forEach((token: any, index: number) => {
+            text += `   ${token.outcome} Token: \`${token.token_id}\`\n`;
+          });
         }
       }
 
@@ -226,13 +263,14 @@ export const getMarketDetailAction: Action = {
         success: true,
         data: {
           market: {
-            condition_id: market.conditionId,
+            slug: market.slug || market.market_slug,
+            condition_id: marketConditionId,
             question: market.question,
             description: market.description,
             category: market.category,
             volume: market.volume,
             liquidity: market.liquidity,
-            end_date: market.endDateIso,
+            end_date: market.endDateIso || market.end_date_iso,
             active: market.active,
             closed: market.closed,
             resolved: market.resolved,
@@ -240,8 +278,15 @@ export const getMarketDetailAction: Action = {
           },
           // Include token IDs for multi-step action chaining
           tokens: {
+            // For Yes/No markets, provide backwards-compatible fields
             yes_token_id: yesToken?.token_id || null,
             no_token_id: noToken?.token_id || null,
+            // For any market type, provide outcome-based token access
+            outcome1_token_id: prices.outcome1_token_id || yesToken?.token_id || null,
+            outcome2_token_id: prices.outcome2_token_id || noToken?.token_id || null,
+            outcome1_name: prices.outcome1_name || "Yes",
+            outcome2_name: prices.outcome2_name || "No",
+            // Full token list for complete access
             all_tokens: tokens.map((t: any) => ({
               token_id: t.token_id,
               outcome: t.outcome,
@@ -254,6 +299,8 @@ export const getMarketDetailAction: Action = {
             yes_price_formatted: prices.yes_price_formatted,
             no_price_formatted: prices.no_price_formatted,
             spread: prices.spread,
+            outcome1_name: prices.outcome1_name,
+            outcome2_name: prices.outcome2_name,
           },
         },
         input: inputParams,
@@ -282,7 +329,7 @@ export const getMarketDetailAction: Action = {
       {
         name: "{{user}}",
         content: {
-          text: "tell me more about market 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+          text: "show me details for the Arsenal win market epl-bou-ars-2026-01-03-ars",
         },
       },
       {
@@ -290,23 +337,35 @@ export const getMarketDetailAction: Action = {
         content: {
           text: " Getting market details...",
           action: "GET_POLYMARKET_DETAIL",
-          conditionId:
-            "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+          market_slug: "epl-bou-ars-2026-01-03-ars",
         },
       },
     ],
     [
       {
         name: "{{user}}",
-        content: { text: "show me details for that first market" },
+        content: { text: "get info on market 986005" },
       },
       {
         name: "{{agent}}",
         content: {
           text: " Fetching market information...",
           action: "GET_POLYMARKET_DETAIL",
-          conditionId:
-            "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+          market_id: "986005",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{user}}",
+        content: { text: "show me the details for that Arsenal market from the event" },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: " Getting market details...",
+          action: "GET_POLYMARKET_DETAIL",
+          market_slug: "epl-bou-ars-2026-01-03-ars",
         },
       },
     ],

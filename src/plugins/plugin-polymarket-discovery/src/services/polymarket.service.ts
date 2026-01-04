@@ -534,62 +534,107 @@ export class PolymarketService extends Service {
    * @returns Market details
    * @throws Error if market is not found
    */
-  async getMarketDetail(conditionId: string): Promise<PolymarketMarket> {
-    logger.info(`[PolymarketService] Fetching market detail: ${conditionId}`);
+  /**
+   * Get market detail by slug, numeric ID, or condition ID
+   * 
+   * Accepts flexible identifiers:
+   * - Market slug (e.g., "epl-bou-ars-2026-01-03-ars")
+   * - Numeric market ID (e.g., "986005")
+   * - Condition ID as fallback (e.g., "0x907b032a73e4f...")
+   * 
+   * @param identifier - Market slug, numeric ID, or condition ID
+   * @returns Market details with token information
+   */
+  async getMarketDetail(identifier: string): Promise<PolymarketMarket> {
+    logger.info(`[PolymarketService] Fetching market detail: ${identifier}`);
 
     // Check LRU cache
     const cached = this.getCached(
-      conditionId,
+      identifier,
       this.marketCache,
       this.marketCacheOrder,
       this.marketCacheTtl
     );
 
     if (cached) {
-      logger.debug(`[PolymarketService] Returning cached market (conditionId: ${conditionId})`);
+      logger.debug(`[PolymarketService] Returning cached market (${identifier})`);
       return cached.data;
     }
 
     return this.retryFetch(async () => {
-      // NOTE: Gamma API does not provide a /markets/:conditionId endpoint.
-      // We must fetch active markets and filter client-side.
-      // Use events/pagination with proper filtering to avoid closed/archived markets
-      // NOTE: Do NOT use tag_slug=15M - that filters only to 15-minute crypto price prediction markets
-      const url = `${this.gammaApiUrl}/events/pagination?limit=500&active=true&archived=false&closed=false&order=volume24hr&ascending=false&offset=0`;
-      const response = await this.fetchWithTimeout(url);
-
-      if (!response.ok) {
-        throw new Error(`Gamma API error: ${response.status} ${response.statusText}`);
-      }
-
-      const responseData = await response.json() as { data: any[] };
-      const eventsData = responseData.data || [];
+      // Detect identifier type and build appropriate query
+      const isNumericId = /^\d+$/.test(identifier);
+      const isConditionId = /^0x[a-fA-F0-9]+$/.test(identifier);
       
-      // Extract markets from events
-      const allMarkets: any[] = [];
-      for (const event of eventsData) {
-        if (event.markets && Array.isArray(event.markets)) {
-          // Filter for active, non-closed markets
-          const activeMarkets = event.markets.filter((m: any) => 
-            m.active === true && m.closed === false && m.archived === false
-          );
-          allMarkets.push(...activeMarkets);
+      let market: PolymarketMarket | null = null;
+      
+      if (isNumericId) {
+        // Use /markets?id=xxx for numeric IDs
+        const url = `${this.gammaApiUrl}/markets?id=${identifier}`;
+        logger.debug(`[PolymarketService] Fetching market by ID: ${url}`);
+        const response = await this.fetchWithTimeout(url);
+        
+        if (!response.ok) {
+          throw new Error(`Gamma API error: ${response.status} ${response.statusText}`);
         }
+        
+        const markets = await response.json() as any[];
+        if (markets && markets.length > 0) {
+          market = mapApiMarketToInterface(markets[0]);
+        }
+      } else if (!isConditionId) {
+        // Use /markets?slug=xxx for slugs (non-numeric, non-hex identifiers)
+        const url = `${this.gammaApiUrl}/markets?slug=${identifier}`;
+        logger.debug(`[PolymarketService] Fetching market by slug: ${url}`);
+        const response = await this.fetchWithTimeout(url);
+        
+        if (!response.ok) {
+          throw new Error(`Gamma API error: ${response.status} ${response.statusText}`);
+        }
+        
+        const markets = await response.json() as any[];
+        if (markets && markets.length > 0) {
+          market = mapApiMarketToInterface(markets[0]);
+        }
+      } else {
+        // Fallback for condition_id: fetch from events and filter client-side
+        // (Gamma API doesn't support direct condition_id lookup)
+        logger.debug(`[PolymarketService] Fetching market by condition_id (fallback): ${identifier}`);
+        const url = `${this.gammaApiUrl}/events/pagination?limit=500&active=true&archived=false&closed=false&order=volume24hr&ascending=false&offset=0`;
+        const response = await this.fetchWithTimeout(url);
+
+        if (!response.ok) {
+          throw new Error(`Gamma API error: ${response.status} ${response.statusText}`);
+        }
+
+        const responseData = await response.json() as { data: any[] };
+        const eventsData = responseData.data || [];
+        
+        // Extract markets from events
+        const allMarkets: any[] = [];
+        for (const event of eventsData) {
+          if (event.markets && Array.isArray(event.markets)) {
+            const activeMarkets = event.markets.filter((m: any) => 
+              m.active === true && m.closed === false && m.archived === false
+            );
+            allMarkets.push(...activeMarkets);
+          }
+        }
+        
+        const mappedMarkets = allMarkets.map(mapApiMarketToInterface);
+        market = mappedMarkets.find((m) => m.condition_id === identifier) || null;
       }
-      
-      const markets = allMarkets.map(mapApiMarketToInterface);
-      const market = markets.find((m) => m.condition_id === conditionId);
 
       if (!market) {
-        throw new Error(`Market not found: ${conditionId}`);
+        throw new Error(`Market not found: ${identifier}`);
       }
 
       // Parse tokens from JSON strings
       const marketWithTokens = this.parseTokens(market);
 
-      // Update LRU cache
+      // Update LRU cache (cache by all identifiers for faster future lookups)
       this.setCached(
-        conditionId,
+        identifier,
         {
           data: marketWithTokens,
           timestamp: Date.now(),
@@ -608,8 +653,11 @@ export class PolymarketService extends Service {
   /**
    * Get real-time market prices from CLOB API
    *
-   * Fetches orderbook data for both YES and NO tokens and extracts best ask prices.
-   * Results are cached with shorter TTL than market metadata for near-real-time updates.
+   * Fetches prices for binary outcome markets. Supports both:
+   * - Standard Yes/No markets
+   * - Sports/alternative markets with team-based or custom outcomes
+   *
+   * For non-Yes/No markets, returns outcome1/outcome2 prices with actual outcome names.
    *
    * @param conditionId - The unique condition ID for the market
    * @returns Current market prices with spread calculation
@@ -634,40 +682,51 @@ export class PolymarketService extends Service {
       // First get market to find token IDs
       const market = await this.getMarketDetail(conditionId);
 
-      if (!market.tokens || market.tokens.length < 2) {
-        throw new Error(`Market ${conditionId} has invalid token structure`);
+      if (!market.tokens || market.tokens.length === 0) {
+        throw new Error(`Market ${conditionId} has no tokens defined`);
       }
 
-      const yesToken = market.tokens.find((t) => t.outcome.toLowerCase() === "yes");
-      const noToken = market.tokens.find((t) => t.outcome.toLowerCase() === "no");
-
-      if (!yesToken || !noToken) {
+      if (market.tokens.length !== 2) {
         throw new Error(
-          `Market ${conditionId} missing Yes/No tokens. Available outcomes: ${market.tokens.map((t) => t.outcome).join(", ")}`
+          `Market ${conditionId} has ${market.tokens.length} outcomes (expected 2 for binary market). Outcomes: ${market.tokens.map((t) => t.outcome).join(", ")}`
         );
       }
 
-      // Fetch prices using the /price endpoint (not orderbook asks!)
-      // The /price endpoint returns the actual market price you'd pay to buy
-      // Using orderbook asks[0] is WRONG - it gives the lowest sell offer, not the market price
-      const [yesPrice, noPrice] = await Promise.all([
-        this.getTokenPrice(yesToken.token_id, "buy"),
-        this.getTokenPrice(noToken.token_id, "buy"),
+      // Get tokens - support both Yes/No and alternative outcomes (e.g., team names)
+      const token1 = market.tokens[0];
+      const token2 = market.tokens[1];
+
+      // Check if this is a standard Yes/No market or alternative outcome market
+      const isYesNoMarket = 
+        token1.outcome.toLowerCase() === "yes" || 
+        token1.outcome.toLowerCase() === "no";
+
+      // Fetch prices for both outcomes
+      const [price1, price2] = await Promise.all([
+        this.getTokenPrice(token1.token_id, "buy"),
+        this.getTokenPrice(token2.token_id, "buy"),
       ]);
 
-      // Calculate spread (difference between yes and no prices)
-      const yesPriceNum = parseFloat(yesPrice);
-      const noPriceNum = parseFloat(noPrice);
-      const spread = Math.abs(yesPriceNum - noPriceNum).toFixed(4);
+      const price1Num = parseFloat(price1);
+      const price2Num = parseFloat(price2);
+      const spread = Math.abs(price1Num - price2Num).toFixed(4);
 
+      // Build prices response with actual outcome names
       const prices: MarketPrices = {
         condition_id: conditionId,
-        yes_price: yesPrice,
-        no_price: noPrice,
-        yes_price_formatted: `${(yesPriceNum * 100).toFixed(1)}%`,
-        no_price_formatted: `${(noPriceNum * 100).toFixed(1)}%`,
+        // For Yes/No markets, use yes_price/no_price for backwards compatibility
+        // For alternative markets, first outcome goes to yes_price, second to no_price
+        yes_price: price1,
+        no_price: price2,
+        yes_price_formatted: `${(price1Num * 100).toFixed(1)}%`,
+        no_price_formatted: `${(price2Num * 100).toFixed(1)}%`,
         spread,
         last_updated: Date.now(),
+        // Include actual outcome names for non-Yes/No markets
+        outcome1_name: token1.outcome,
+        outcome2_name: token2.outcome,
+        outcome1_token_id: token1.token_id,
+        outcome2_token_id: token2.token_id,
       };
 
       // Update LRU cache
@@ -683,9 +742,15 @@ export class PolymarketService extends Service {
         this.maxPriceCacheSize
       );
 
-      logger.info(
-        `[PolymarketService] Fetched prices - YES: ${prices.yes_price_formatted}, NO: ${prices.no_price_formatted}`
-      );
+      if (isYesNoMarket) {
+        logger.info(
+          `[PolymarketService] Fetched prices - YES: ${prices.yes_price_formatted}, NO: ${prices.no_price_formatted}`
+        );
+      } else {
+        logger.info(
+          `[PolymarketService] Fetched prices - ${token1.outcome}: ${prices.yes_price_formatted}, ${token2.outcome}: ${prices.no_price_formatted}`
+        );
+      }
       return prices;
     });
   }
@@ -1240,14 +1305,41 @@ export class PolymarketService extends Service {
     }
 
     return this.retryFetch(async () => {
-      const url = `${this.gammaApiUrl}/events/${eventIdOrSlug}`;
+      // Build query parameters - Gamma API uses query params, not path params
+      // Determine if input is a numeric ID or a slug
+      const queryParams = new URLSearchParams();
+      const isNumericId = /^\d+$/.test(eventIdOrSlug);
+      
+      if (isNumericId) {
+        queryParams.set("id", eventIdOrSlug);
+      } else {
+        queryParams.set("slug", eventIdOrSlug);
+      }
+      
+      const url = `${this.gammaApiUrl}/events?${queryParams.toString()}`;
+      logger.debug(`[PolymarketService] Fetching event from: ${url}`);
       const response = await this.fetchWithTimeout(url);
 
       if (!response.ok) {
         throw new Error(`Gamma API error: ${response.status} ${response.statusText}`);
       }
 
-      const event = await response.json() as PolymarketEventDetail;
+      // Gamma API returns an array of events, we need the first matching one
+      const events = await response.json() as PolymarketEventDetail[];
+      
+      if (!events || events.length === 0) {
+        throw new Error(`Event not found: ${eventIdOrSlug}`);
+      }
+      
+      const event = events[0];
+
+      // Parse tokens for each market (same as searchMarkets does)
+      // This ensures event detail responses include yes_token_id/no_token_id for trading
+      if (event.markets && Array.isArray(event.markets)) {
+        event.markets = event.markets.map(market =>
+          this.parseTokens(mapApiMarketToInterface(market))
+        );
+      }
 
       // Update LRU cache
       this.setCached(

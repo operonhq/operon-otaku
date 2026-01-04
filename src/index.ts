@@ -1,6 +1,6 @@
 import { logger, type IAgentRuntime, type Project, type ProjectAgent } from '@elizaos/core';
 import { character } from './character';
-import sqlPlugin from '@elizaos/plugin-sql';
+import sqlPlugin from '@elizaos/plugin-sql/node';
 import bootstrapPlugin from './plugins/plugin-bootstrap/src/index.ts';
 import openaiPlugin from '@elizaos/plugin-openai';
 import cdpPlugin from './plugins/plugin-cdp/index.ts';
@@ -17,6 +17,7 @@ import mcpPlugin from '@elizaos/plugin-mcp';
 import morphoPlugin from './plugins/plugin-morpho/src/index.ts';
 import gamificationPlugin from './plugins/plugin-gamification/src/index.ts';
 import polymarketDiscoveryPlugin from './plugins/plugin-polymarket-discovery/src/index.ts';
+import polymarketTradingPlugin from './plugins/plugin-polymarket-trading/src/index.ts';
 
 const initCharacter = ({ runtime }: { runtime: IAgentRuntime }) => {
   logger.info('Initializing character');
@@ -45,6 +46,7 @@ export const projectAgent: ProjectAgent = {
     gamificationPlugin,
     biconomyPlugin,
     polymarketDiscoveryPlugin,
+    polymarketTradingPlugin,
     // x402DiscoveryPlugin,
   ],
 };
