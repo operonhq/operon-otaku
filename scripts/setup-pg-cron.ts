@@ -39,6 +39,20 @@ async function main() {
   const sql = postgres(databaseUrl);
 
   try {
+    // CRITICAL: Disable RLS on user_registry table (auth lookup table)
+    // This table is queried during auth to look up entity_id BEFORE entity context exists
+    // RLS on this table causes "Client was closed" errors as queries fail without context
+    try {
+      await sql`ALTER TABLE IF EXISTS user_registry DISABLE ROW LEVEL SECURITY`;
+      await sql`DROP POLICY IF EXISTS entity_isolation_policy ON user_registry`;
+      if (verbose) console.log('✅ RLS disabled on user_registry (auth lookup table)\n');
+    } catch (rlsErr: any) {
+      // Table might not exist yet, or already disabled - that's OK
+      if (!rlsErr.message?.includes('does not exist')) {
+        if (verbose) console.log(`⚠️  Could not modify user_registry RLS: ${rlsErr.message}\n`);
+      }
+    }
+
     // Check if pg_cron is available
     const [{ exists }] = await sql`
       SELECT EXISTS (

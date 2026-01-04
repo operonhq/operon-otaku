@@ -23,7 +23,7 @@ import {
   validateSlippage,
   slippageToDecimal,
 } from "../utils/slippage";
-import { validateBiconomyService } from "../utils/actionHelpers";
+import { validateBiconomyService, getValidatedViemClients } from "../utils/actionHelpers";
 
 // CDP network mapping
 const CDP_NETWORK_MAP: Record<string, CdpNetwork> = {
@@ -260,17 +260,21 @@ Supports: Ethereum, Base, Arbitrum, Polygon, Optimism, BSC, Scroll, Gnosis, and 
         return { text: `❌ ${errorMsg}`, success: false, error: "missing_wallet", input: inputParams } as ActionResult & { input: typeof inputParams };
       }
 
-      // Get viem clients and CDP account
+      // Get viem clients and validate CDP account matches entity wallet
       const cdpNetwork = resolveCdpNetwork(inputChain);
-      const viemClient = await cdpService.getViemClientsForAccount({
+      const viemResult = await getValidatedViemClients(
+        cdpService,
         accountName,
-        network: cdpNetwork,
-      });
-
-      const userAddress = viemClient.address as `0x${string}`;
-      const cdpAccount = viemClient.cdpAccount; // Use CDP account for native EIP-712 signing
-      const walletClient = viemClient.walletClient;
-      const publicClient = viemClient.publicClient;
+        cdpNetwork,
+        wallet,
+        "MEE_SUPERTX_REBALANCE",
+        inputParams,
+        callback
+      );
+      if (!viemResult.success) {
+        return viemResult.error;
+      }
+      const { userAddress, cdpAccount, walletClient, publicClient } = viemResult;
 
       const preferredFeeTokenResult = await tryGetBaseUsdcFeeToken(cdpService, accountName);
       if (preferredFeeTokenResult?.usedBaseUsdc) {

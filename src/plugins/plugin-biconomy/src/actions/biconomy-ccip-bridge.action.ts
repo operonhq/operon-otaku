@@ -23,7 +23,7 @@ import {
   resolveTokenToAddress,
   getTokenDecimals,
 } from "../../../plugin-relay/src/utils/token-resolver";
-import { validateBiconomyService } from "../utils/actionHelpers";
+import { validateBiconomyService, getValidatedViemClients } from "../utils/actionHelpers";
 
 // CDP network mapping
 const CDP_NETWORK_MAP: Record<string, CdpNetwork> = {
@@ -305,17 +305,21 @@ CCIP fees are paid in the native token of the source chain (ETH, POL, etc.).`,
         } as ActionResult;
       }
 
-      // Get viem clients and CDP account
+      // Get viem clients and validate CDP account matches entity wallet
       const cdpNetwork = resolveCdpNetwork(srcChain);
-      const viemClient = await cdpService.getViemClientsForAccount({
+      const viemResult = await getValidatedViemClients(
+        cdpService,
         accountName,
-        network: cdpNetwork,
-      });
-
-      const userAddress = viemClient.address as `0x${string}`;
-      const cdpAccount = viemClient.cdpAccount; // Use CDP account for native EIP-712 signing
-      const walletClient = viemClient.walletClient;
-      const publicClient = viemClient.publicClient;
+        cdpNetwork,
+        wallet,
+        "CCIP_BRIDGE",
+        inputParams,
+        callback
+      );
+      if (!viemResult.success) {
+        return viemResult.error;
+      }
+      const { userAddress, cdpAccount, walletClient, publicClient } = viemResult;
 
       const preferredFeeTokenResult = await tryGetBaseUsdcFeeToken(cdpService, accountName);
       if (preferredFeeTokenResult?.usedBaseUsdc) {

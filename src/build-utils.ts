@@ -149,6 +149,9 @@ export async function createElizaBuildConfig(options: ElizaBuildOptions): Promis
   // Add path alias plugin to all builds
   const allPlugins = [createPathAliasPlugin(root), ...plugins];
 
+  // Convert sourcemap boolean to string for Bun compatibility (older versions require string)
+  const sourcemapValue = sourcemap === true ? 'external' : sourcemap === false ? undefined : sourcemap;
+
   const config: BuildConfig = {
     entrypoints: resolvedEntrypoints,
     outdir,
@@ -156,7 +159,7 @@ export async function createElizaBuildConfig(options: ElizaBuildOptions): Promis
     format,
     // Note: 'splitting' option removed as it's not part of Bun's BuildConfig type
     // splitting: format === 'esm' && entrypoints.length > 1,
-    sourcemap,
+    ...(sourcemapValue && { sourcemap: sourcemapValue }),
     minify,
     external: [...nodeExternals, ...elizaExternals, ...cleanExternals],
     plugins: allPlugins,

@@ -85,9 +85,28 @@ export class BiconomyService extends Service {
    * Get a quote for a supertransaction
    */
   async getQuote(request: QuoteRequest): Promise<QuoteResponse> {
+    // Log wallet/owner info and request params BEFORE making the quote request
+    const ownerAddr = request.ownerAddress || "unknown";
+    const fundingInfo = request.fundingTokens?.map(ft => ({
+      token: ft.tokenAddress,
+      chainId: ft.chainId,
+      amount: ft.amount,
+    })) || [];
+    const flowsSummary = request.composeFlows?.map(flow => ({
+      type: flow.type,
+      data: flow.data,
+    })) || [];
+
+    logger.info(`[BICONOMY SERVICE] ========== QUOTE REQUEST ==========`);
+    logger.info(`[BICONOMY SERVICE] Owner/Wallet: ${ownerAddr}`);
+    logger.info(`[BICONOMY SERVICE] Mode: ${request.mode}`);
+    logger.info(`[BICONOMY SERVICE] Funding tokens: ${JSON.stringify(fundingInfo)}`);
+    logger.info(`[BICONOMY SERVICE] Compose flows: ${JSON.stringify(flowsSummary)}`);
+    if (request.feeToken) {
+      logger.info(`[BICONOMY SERVICE] Fee token: ${JSON.stringify(request.feeToken)}`);
+    }
+
     try {
-      logger.info(`[BICONOMY SERVICE] Getting quote for ${request.mode} mode`);
-      
       const response = (await fetch(`${BICONOMY_API_URL}/v1/quote`, {
         method: "POST",
         headers: {
@@ -99,6 +118,13 @@ export class BiconomyService extends Service {
       
       if (!response.ok) {
         const errorText = await response.text();
+        // Log rejection with full params
+        logger.error(`[BICONOMY SERVICE] ========== QUOTE REJECTED ==========`);
+        logger.error(`[BICONOMY SERVICE] Owner/Wallet: ${ownerAddr}`);
+        logger.error(`[BICONOMY SERVICE] Status: ${response.status}`);
+        logger.error(`[BICONOMY SERVICE] Error: ${errorText}`);
+        logger.error(`[BICONOMY SERVICE] Full request params: ${JSON.stringify(request, null, 2)}`);
+        logger.error(`[BICONOMY SERVICE] ===================================`);
 
         throw new Error(`Quote request failed: ${response.status} ${errorText}`);
       }
@@ -111,7 +137,14 @@ export class BiconomyService extends Service {
       return quote;
     } catch (error) {
       const err = error as Error;
-      logger.error(`[BICONOMY SERVICE] Failed to get quote: ${err.message}`);
+      // If not already logged (i.e., not from response.ok check), log here
+      if (!err.message.includes('Quote request failed:')) {
+        logger.error(`[BICONOMY SERVICE] ========== QUOTE ERROR ==========`);
+        logger.error(`[BICONOMY SERVICE] Owner/Wallet: ${ownerAddr}`);
+        logger.error(`[BICONOMY SERVICE] Error: ${err.message}`);
+        logger.error(`[BICONOMY SERVICE] Full request params: ${JSON.stringify(request, null, 2)}`);
+        logger.error(`[BICONOMY SERVICE] =================================`);
+      }
       throw new Error(`Failed to get Biconomy quote: ${err.message}`);
     }
   }
@@ -606,11 +639,13 @@ export class BiconomyService extends Service {
     onProgress?: (status: string) => void
   ): Promise<QuoteResponse> {
     let currentRequest = this.cloneQuoteRequest(request);
+    const ownerAddr = request.ownerAddress || "unknown";
 
     for (let attempt = 0; attempt <= FUNDING_RETRY_MAX_ATTEMPTS; attempt++) {
       try {
         const attemptLabel = attempt === 0 ? "Getting quote from Biconomy..." : `Getting quote (retry ${attempt})...`;
         onProgress?.(attemptLabel);
+        logger.info(`[BICONOMY SERVICE] Quote attempt ${attempt + 1}/${FUNDING_RETRY_MAX_ATTEMPTS + 1} for wallet: ${ownerAddr}`);
         return await this.getQuote(currentRequest);
       } catch (error) {
         const err = error as Error;
@@ -620,7 +655,12 @@ export class BiconomyService extends Service {
           this.isFundingShortfallError(err);
 
         if (!canRetry) {
-          logger.error(`[BICONOMY SERVICE] Failed to get quote: ${err.message}`);
+          logger.error(`[BICONOMY SERVICE] ========== QUOTE FAILED (NO RETRY) ==========`);
+          logger.error(`[BICONOMY SERVICE] Owner/Wallet: ${ownerAddr}`);
+          logger.error(`[BICONOMY SERVICE] Attempt: ${attempt + 1}/${FUNDING_RETRY_MAX_ATTEMPTS + 1}`);
+          logger.error(`[BICONOMY SERVICE] Error: ${err.message}`);
+          logger.error(`[BICONOMY SERVICE] Can retry: false (funding shortfall: ${this.isFundingShortfallError(err)}, has funding tokens: ${!!currentRequest.fundingTokens?.length})`);
+          logger.error(`[BICONOMY SERVICE] ==============================================`);
           throw err;
         }
 

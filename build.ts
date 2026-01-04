@@ -82,7 +82,7 @@ async function build() {
           outdir: './dist',
           target: 'node',
           format: 'esm',
-          sourcemap: true,
+          sourcemap: 'external', // Railway's Bun 1.2.10 requires string, not boolean
           minify: false,
           external: [
             'dotenv',

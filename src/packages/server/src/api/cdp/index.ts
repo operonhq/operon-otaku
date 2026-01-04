@@ -1,4 +1,5 @@
 import express from 'express';
+import { Client } from 'pg';
 import { logger, validateUuid } from '@elizaos/core';
 import type { AgentServer } from '../../index';
 import { sendError, sendSuccess } from '../shared/response-utils';
@@ -6,9 +7,144 @@ import { requireAuth, type AuthenticatedRequest } from '../../middleware';
 import { CdpTransactionManager } from '@/managers/cdp-transaction-manager';
 import { MAINNET_NETWORKS, NATIVE_TOKEN_ADDRESS } from '@/constants/chains';
 
+/**
+ * Execute a query with a fresh direct connection (bypasses pool).
+ * Used as fallback when the connection pool is dead.
+ */
+async function executeWithFreshConnection(sql: string): Promise<{ rows: any[] }> {
+  const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  if (!connectionString) {
+    throw new Error('No database connection string available');
+  }
+
+  const client = new Client({ connectionString });
+  try {
+    await client.connect();
+    const result = await client.query(sql);
+    return result;
+  } finally {
+    await client.end().catch(() => {}); // Always cleanup
+  }
+}
+
+/**
+ * Check if error is retryable (connection pool issues)
+ * Handles both direct errors and DrizzleQueryError wrappers
+ */
+function isRetryableError(error: any): boolean {
+  const patterns = [
+    'Client was closed',
+    'Connection terminated', 
+    'connection is closed',
+    'ECONNRESET',
+    'timeout',
+  ];
+  
+  // Check error message
+  const message = error?.message || '';
+  // Check cause/original error (DrizzleQueryError wraps original error)
+  const causeMessage = error?.cause?.message || error?.originalError?.message || '';
+  // Check stringified error for nested messages
+  const fullError = String(error);
+  
+  return patterns.some(p => 
+    message.includes(p) || causeMessage.includes(p) || fullError.includes(p)
+  );
+}
+
+/**
+ * Execute a query with retry logic and fresh connection fallback.
+ * Handles Railway's aggressive connection proxy that closes idle connections.
+ */
+async function executeWithRetry(
+  dbExecute: (sql: string) => Promise<{ rows: any[] }>,
+  sql: string,
+  maxRetries = 2
+): Promise<{ rows: any[] }> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await dbExecute(sql);
+    } catch (error: any) {
+      lastError = error;
+      
+      if (isRetryableError(error) && attempt < maxRetries) {
+        const delay = 200 * Math.pow(2, attempt);
+        logger.warn(`[CDP API] DB connection error, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      
+      // Pool dead - try fresh connection as last resort
+      if (isRetryableError(error)) {
+        logger.warn('[CDP API] Pool dead after retries, attempting fresh direct connection...');
+        try {
+          const result = await executeWithFreshConnection(sql);
+          logger.info('[CDP API] Fresh connection succeeded');
+          return result;
+        } catch (freshError: any) {
+          logger.error('[CDP API] Fresh connection also failed:', freshError?.message);
+          throw freshError;
+        }
+      }
+      
+      throw error;
+    }
+  }
+
+  throw lastError;
+}
+
+/**
+ * Resolve entity_id to cdp_user_id from user_registry.
+ * Server wallets are keyed by the OLD entity_id (now stored as cdp_user_id).
+ */
+async function resolveWalletAccountName(
+  dbExecute: ((sql: string) => Promise<{ rows: any[] }>) | null,
+  entityId: string,
+  logPrefix = 'CDP API'
+): Promise<string> {
+  if (!dbExecute) {
+    logger.warn(`[${logPrefix}] Database not available, falling back to entityId`);
+    return entityId;
+  }
+
+  try {
+    const escapedId = entityId.replace(/'/g, "''");
+    const sql = `
+      SELECT cdp_user_id FROM user_registry 
+      WHERE entity_id = '${escapedId}'::uuid 
+      LIMIT 1
+    `;
+    
+    // Use executeWithRetry for resilience against pool failures
+    const result = await executeWithRetry(dbExecute, sql);
+
+    if (result.rows?.[0]?.cdp_user_id) {
+      const cdpUserId = result.rows[0].cdp_user_id as string;
+      logger.debug(`[${logPrefix}] Resolved entity_id=${entityId.substring(0, 8)}... to cdp_user_id=${cdpUserId.substring(0, 8)}...`);
+      return cdpUserId;
+    }
+
+    logger.warn(`[${logPrefix}] No user_registry entry for entity_id=${entityId.substring(0, 8)}..., using entityId`);
+    return entityId;
+  } catch (error) {
+    logger.error(`[${logPrefix}] Failed to resolve wallet account name:`, error);
+    return entityId;
+  }
+}
+
 export function cdpRouter(serverInstance: AgentServer): express.Router {
   const router = express.Router();
-  const db = serverInstance?.database;
+  
+  // Version marker for deployment verification
+  logger.info('[CDP API] Initializing CDP router (v2 - with connection retry)');
+  
+  // dbAdapter for ORM methods like getEntitiesByIds
+  const dbAdapter = serverInstance?.database;
+  // Raw Drizzle db for execute() queries
+  const rawDb = (dbAdapter as any)?.db;
 
   // Get the singleton instance of CdpTransactionManager
   const cdpTransactionManager = CdpTransactionManager.getInstance();
@@ -16,11 +152,14 @@ export function cdpRouter(serverInstance: AgentServer): express.Router {
   // SECURITY: Require authentication for all CDP wallet operations
   router.use(requireAuth);
 
+  // Database executor for resolveWalletAccountName
+  const dbExecute = rawDb ? ((sql: string) => rawDb.execute(sql)) : null;
+
   /**
    * Helper: Get wallet address from entity metadata for GET requests
    */
   async function getWalletAddressFromEntity(userId: string): Promise<string | null> {
-    if (!db) {
+    if (!dbAdapter) {
       logger.warn('[CDP API] Database not available, cannot fetch entity metadata');
       return null;
     }
@@ -32,7 +171,7 @@ export function cdpRouter(serverInstance: AgentServer): express.Router {
         return null;
       }
       
-      const entities = await db.getEntitiesByIds([validatedUserId]);
+      const entities = await dbAdapter.getEntitiesByIds([validatedUserId]);
       if (!entities || entities.length === 0) {
         return null;
       }
@@ -56,12 +195,15 @@ export function cdpRouter(serverInstance: AgentServer): express.Router {
    * POST /api/cdp/wallet
    * Get or create server wallet for authenticated user
    * SECURITY: Uses userId from JWT token, not from request body
+   * NOTE: Resolves entity_id → cdp_user_id for wallet operations (server wallets keyed by old entity_id)
    */
   router.post('/wallet', async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.userId!;
 
-      const result = await cdpTransactionManager.getOrCreateWallet(userId);
+      // Resolve entity_id to cdp_user_id for CDP wallet operations
+      const accountName = await resolveWalletAccountName(dbExecute, userId, 'CDP API');
+      const result = await cdpTransactionManager.getOrCreateWallet(accountName);
       
       sendSuccess(res, result);
     } catch (error) {
@@ -102,7 +244,9 @@ export function cdpRouter(serverInstance: AgentServer): express.Router {
       // Try to get address from entity metadata first (for GET requests)
       const walletAddress = await getWalletAddressFromEntity(userId);
       
-      const result = await cdpTransactionManager.getTokenBalances(userId, chain, false, walletAddress || undefined);
+      // Resolve entity_id to cdp_user_id for CDP wallet operations
+      const accountName = await resolveWalletAccountName(dbExecute, userId, 'CDP API');
+      const result = await cdpTransactionManager.getTokenBalances(accountName, chain, false, walletAddress || undefined);
 
       sendSuccess(res, result);
     } catch (error) {
@@ -142,7 +286,9 @@ export function cdpRouter(serverInstance: AgentServer): express.Router {
       // Try to get address from entity metadata first (same as GET endpoint)
       const walletAddress = await getWalletAddressFromEntity(userId);
       
-      const result = await cdpTransactionManager.getTokenBalances(userId, chain, true, walletAddress || undefined);
+      // Resolve entity_id to cdp_user_id for CDP wallet operations
+      const accountName = await resolveWalletAccountName(dbExecute, userId, 'CDP API');
+      const result = await cdpTransactionManager.getTokenBalances(accountName, chain, true, walletAddress || undefined);
 
       sendSuccess(res, { ...result, synced: true });
     } catch (error) {
@@ -183,7 +329,9 @@ export function cdpRouter(serverInstance: AgentServer): express.Router {
       // Try to get address from entity metadata first (for GET requests)
       const walletAddress = await getWalletAddressFromEntity(userId);
       
-      const result = await cdpTransactionManager.getNFTs(userId, chain, false, walletAddress || undefined);
+      // Resolve entity_id to cdp_user_id for CDP wallet operations
+      const accountName = await resolveWalletAccountName(dbExecute, userId, 'CDP API');
+      const result = await cdpTransactionManager.getNFTs(accountName, chain, false, walletAddress || undefined);
 
       sendSuccess(res, result);
     } catch (error) {
@@ -223,7 +371,9 @@ export function cdpRouter(serverInstance: AgentServer): express.Router {
       // Try to get address from entity metadata first (same as GET endpoint)
       const walletAddress = await getWalletAddressFromEntity(userId);
       
-      const result = await cdpTransactionManager.getNFTs(userId, chain, true, walletAddress || undefined);
+      // Resolve entity_id to cdp_user_id for CDP wallet operations
+      const accountName = await resolveWalletAccountName(dbExecute, userId, 'CDP API');
+      const result = await cdpTransactionManager.getNFTs(accountName, chain, true, walletAddress || undefined);
 
       sendSuccess(res, { ...result, synced: true });
     } catch (error) {
@@ -256,7 +406,9 @@ export function cdpRouter(serverInstance: AgentServer): express.Router {
       // Try to get address from entity metadata first (for GET requests)
       const walletAddress = await getWalletAddressFromEntity(userId);
       
-      const result = await cdpTransactionManager.getTransactionHistory(userId, walletAddress || undefined);
+      // Resolve entity_id to cdp_user_id for CDP wallet operations
+      const accountName = await resolveWalletAccountName(dbExecute, userId, 'CDP API');
+      const result = await cdpTransactionManager.getTransactionHistory(accountName, walletAddress || undefined);
 
       sendSuccess(res, result);
     } catch (error) {
@@ -288,8 +440,10 @@ export function cdpRouter(serverInstance: AgentServer): express.Router {
         return sendError(res, 400, 'INVALID_REQUEST', 'Missing required fields: network, to, token, amount');
       }
 
+      // Resolve entity_id to cdp_user_id for CDP wallet operations
+      const accountName = await resolveWalletAccountName(dbExecute, userId, 'CDP API');
       const result = await cdpTransactionManager.sendToken({
-        userId,
+        userId: accountName,
         network,
         to,
         token,
@@ -327,8 +481,10 @@ export function cdpRouter(serverInstance: AgentServer): express.Router {
         return sendError(res, 400, 'INVALID_REQUEST', 'Missing required fields: network, to, contractAddress, tokenId');
       }
 
+      // Resolve entity_id to cdp_user_id for CDP wallet operations
+      const accountName = await resolveWalletAccountName(dbExecute, userId, 'CDP API');
       const result = await cdpTransactionManager.sendNFT({
-        userId,
+        userId: accountName,
         network,
         to,
         contractAddress,
@@ -499,8 +655,10 @@ export function cdpRouter(serverInstance: AgentServer): express.Router {
 
       logger.debug(`[CDP API] Resolved tokens: ${resolvedFromToken} -> ${resolvedToToken}`);
 
+      // Resolve entity_id to cdp_user_id for CDP wallet operations
+      const accountName = await resolveWalletAccountName(dbExecute, userId, 'CDP API');
       const result = await cdpTransactionManager.getSwapPrice({
-        userId,
+        userId: accountName,
         network,
         fromToken: resolvedFromToken,
         toToken: resolvedToToken,
@@ -558,8 +716,10 @@ export function cdpRouter(serverInstance: AgentServer): express.Router {
 
       logger.debug(`[CDP API] Resolved tokens: ${resolvedFromToken} -> ${resolvedToToken}`);
 
+      // Resolve entity_id to cdp_user_id for CDP wallet operations
+      const accountName = await resolveWalletAccountName(dbExecute, userId, 'CDP API');
       const result = await cdpTransactionManager.swap({
-        userId,
+        userId: accountName,
         network,
         fromToken: resolvedFromToken,
         toToken: resolvedToToken,

@@ -5,6 +5,7 @@ import {
   Memory,
   logger,
 } from "@elizaos/core";
+import { Client } from "pg";
 
 export interface EntityWalletResult {
   success: true;
@@ -18,6 +19,97 @@ export interface EntityWalletError {
 }
 
 export type EntityWalletResponse = EntityWalletResult | EntityWalletError;
+
+// Type for database executor function
+type DbExecutor = (sql: string) => Promise<{ rows: any[] }>;
+
+/**
+ * Escape string for SQL to prevent injection
+ */
+export function escapeSql(str: string): string {
+  return str.replace(/'/g, "''");
+}
+
+/**
+ * Execute a query with a fresh direct connection.
+ * Used to reliably query user_registry for CDP account resolution.
+ */
+async function executeWithDirectConnection(sql: string): Promise<{ rows: any[] }> {
+  const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  if (!connectionString) {
+    throw new Error('No database connection string available');
+  }
+
+  const client = new Client({ connectionString });
+  try {
+    await client.connect();
+    const result = await client.query(sql);
+    return result;
+  } finally {
+    await client.end().catch(() => {}); // Always cleanup
+  }
+}
+
+/**
+ * Resolve entity_id to cdp_user_id from user_registry.
+ * The cdp_user_id is the correct account name for CDP server wallets.
+ * 
+ * Background: During migration, old entity_ids became cdp_user_ids.
+ * Server wallets are keyed by the OLD entity_id (now stored as cdp_user_id).
+ * 
+ * @param dbExecute - Function to execute SQL queries (optional, will use direct connection if not provided)
+ * @param entityId - The entity_id to resolve
+ * @param logPrefix - Optional prefix for log messages (default: 'resolveWalletAccountName')
+ */
+export async function resolveWalletAccountName(
+  dbExecute: DbExecutor | null,
+  entityId: string,
+  logPrefix = 'resolveWalletAccountName'
+): Promise<string> {
+  // Use provided executor or fall back to direct connection
+  const executor = dbExecute ?? executeWithDirectConnection;
+
+  try {
+    const result = await executor(`
+      SELECT cdp_user_id FROM user_registry 
+      WHERE entity_id = '${escapeSql(entityId)}'::uuid 
+      LIMIT 1
+    `);
+
+    if (result.rows?.[0]?.cdp_user_id) {
+      const cdpUserId = result.rows[0].cdp_user_id as string;
+      logger.debug(`[${logPrefix}] Resolved entity_id=${entityId.substring(0, 8)}... to cdp_user_id=${cdpUserId.substring(0, 8)}...`);
+      return cdpUserId;
+    }
+
+    logger.warn(`[${logPrefix}] No user_registry entry for entity_id=${entityId.substring(0, 8)}..., using entityId as accountName`);
+    return entityId;
+  } catch (error) {
+    logger.error(`[${logPrefix}] Failed to resolve wallet account name:`, error);
+    return entityId;
+  }
+}
+
+/**
+ * Helper to get db executor from runtime (may return null if not available)
+ */
+function getDbExecutorFromRuntime(runtime: IAgentRuntime): DbExecutor | null {
+  // Try multiple paths to access database executor
+  const runtimeAny = runtime as any;
+  
+  // Path 1: runtime.db.execute (Drizzle style)
+  if (runtimeAny.db?.execute) {
+    return runtimeAny.db.execute.bind(runtimeAny.db);
+  }
+  
+  // Path 2: runtime.databaseAdapter.db.execute
+  if (runtimeAny.databaseAdapter?.db?.execute) {
+    return runtimeAny.databaseAdapter.db.execute.bind(runtimeAny.databaseAdapter.db);
+  }
+  
+  // Not available - resolveWalletAccountName will use direct connection
+  return null;
+}
 
 /**
  * Retrieves entity wallet information from runtime and validates it exists.
@@ -99,13 +191,18 @@ export async function getEntityWallet(
       };
     }
 
+    // Resolve entityId to cdp_user_id for CDP server wallet operations
+    // Server wallets are keyed by cdp_user_id (the OLD entity_id from before migration)
+    const dbExecute = getDbExecutorFromRuntime(runtime);
+    const accountName = await resolveWalletAccountName(dbExecute, entityId, 'getEntityWallet');
+
     return {
       success: true,
       walletAddress,
       metadata: {
         walletAddress,
         walletEntityId,
-        accountName: walletEntityId
+        accountName: accountName || walletEntityId
       },
     };
   } catch (error) {

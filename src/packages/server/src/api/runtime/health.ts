@@ -35,26 +35,33 @@ export function createHealthRouter(elizaOS: ElizaOS, serverInstance: AgentServer
     );
   });
 
-  // Comprehensive health check
-  router.get('/health', (_req, res) => {
-    logger.log({ apiRoute: '/health' }, 'Health check route hit');
-    const healthcheck = {
-      status: 'OK',
-      version: process.env.APP_VERSION || 'unknown',
-      timestamp: new Date().toISOString(),
-      dependencies: {
-        agents: elizaOS.getAgents().length > 0 ? 'healthy' : 'no_agents',
-      },
-    };
-
-    const statusCode = healthcheck.dependencies.agents === 'healthy' ? 200 : 503;
-    res.status(statusCode).json(healthcheck);
+  // Health check - proxies to /api/agents for Railway healthcheck
+  // Prevents 304 responses with no-cache headers
+  router.get('/health', async (_req, res) => {
+    // Prevent 304 responses - always return fresh data
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    
+    try {
+      // Internal proxy to /api/agents
+      const port = process.env.PORT || 3000;
+      const response = await fetch(`http://localhost:${port}/api/agents`);
+      const data = await response.json();
+      res.status(response.status).json(data);
+    } catch (error) {
+      logger.error('[Health] Failed to proxy to /api/agents:', error instanceof Error ? error.message : String(error));
+      res.status(503).json({ 
+        success: false, 
+        error: { code: 'PROXY_ERROR', message: 'Health check failed' }
+      });
+    }
   });
 
   // Server stop endpoint (admin only)
   router.post('/stop', requireAuth as any, requireAdmin as any, (_req: AuthenticatedRequest, res) => {
     logger.log({ apiRoute: '/stop' }, 'Server stopping...');
-    serverInstance?.stop(); // Use optional chaining in case server is undefined
+    serverInstance?.stop();
     res.json({ message: 'Server stopping...' });
   });
 
