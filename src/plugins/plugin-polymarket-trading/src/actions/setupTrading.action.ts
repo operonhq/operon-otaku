@@ -17,6 +17,7 @@ import {
   logger,
 } from "@elizaos/core";
 import { PolymarketTradingService } from "../services/trading.service";
+import { shouldPolymarketTradingPluginBeInContext } from "../../matcher";
 import { getEntityWallet } from "../../../../utils/entity";
 
 export const setupTradingAction: Action = {
@@ -44,8 +45,13 @@ export const setupTradingAction: Action = {
 
   parameters: {},
 
-  validate: async (runtime: IAgentRuntime, _message: Memory) => {
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     try {
+      // Check plugin context first
+      if (!shouldPolymarketTradingPluginBeInContext(state, message)) {
+        return false;
+      }
+
       const service = runtime.getService(
         PolymarketTradingService.serviceType
       ) as PolymarketTradingService;

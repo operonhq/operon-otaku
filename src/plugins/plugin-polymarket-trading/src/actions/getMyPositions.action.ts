@@ -15,6 +15,7 @@ import {
   type ActionResult,
   logger,
 } from "@elizaos/core";
+import { shouldPolymarketTradingPluginBeInContext } from "../../matcher";
 import { getEntityWallet } from "../../../../utils/entity";
 
 // Polymarket Data API endpoint
@@ -83,7 +84,11 @@ export const getMyPositionsAction: Action = {
 
   parameters: {},
 
-  validate: async (_runtime: IAgentRuntime, _message: Memory) => {
+  validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) => {
+    // Check plugin context first
+    if (!shouldPolymarketTradingPluginBeInContext(state, message)) {
+      return false;
+    }
     return true;
   },
 

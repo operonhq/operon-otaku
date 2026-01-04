@@ -64,6 +64,9 @@ export { CdpSignerAdapter } from "./adapters/cdp-signer-adapter";
 // Utils
 export * from "./utils";
 
+// Matcher (for context-aware action activation)
+export { shouldPolymarketTradingPluginBeInContext, polymarketTradingKeywordPatterns } from "../matcher";
+
 /**
  * Polymarket Trading Plugin
  *
