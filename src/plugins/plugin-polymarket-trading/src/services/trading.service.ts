@@ -216,7 +216,7 @@ export class PolymarketTradingService extends Service {
 
     // Create new state
     logger.info(
-      `[PolymarketTradingService] Creating user state for: $  {userId.substring(0, 20)}...`
+      `[PolymarketTradingService] Creating user state for: ${userId.substring(0, 20)}...`
     );
 
     const client = this.getCdpClient();
