@@ -147,6 +147,10 @@ export class PolymarketTradingService extends Service {
       const parsed = parseFloat(maxTradeAmountSetting);
       if (!isNaN(parsed) && parsed > 0) {
         this.maxTradeAmount = parsed;
+      } else {
+        logger.warn(
+          `[PolymarketTradingService] Invalid POLYMARKET_MAX_TRADE_AMOUNT "${maxTradeAmountSetting}" - must be a positive number. Using default: $${DEFAULT_MAX_TRADE_AMOUNT}`
+        );
       }
     }
 
@@ -212,7 +216,7 @@ export class PolymarketTradingService extends Service {
 
     // Create new state
     logger.info(
-      `[PolymarketTradingService] Creating user state for: ${userId.substring(0, 20)}...`
+      `[PolymarketTradingService] Creating user state for: $  {userId.substring(0, 20)}...`
     );
 
     const client = this.getCdpClient();
@@ -457,30 +461,27 @@ export class PolymarketTradingService extends Service {
    * Uses createAndPostMarketOrder for immediate execution (FOK - Fill or Kill).
    * This ensures orders either fill immediately or fail - no lingering limit orders.
    *
-   * IMPORTANT: For createAndPostMarketOrder:
-   * - BUY: `amount` is the USDC amount to spend
-   * - SELL: `amount` is the NUMBER OF SHARES to sell (not USDC!)
+   * IMPORTANT: The API's createAndPostMarketOrder expects different units per side:
+   * - BUY: orderAmount = usdcToSpend
+   * - SELL: orderAmount = sharesToSell
    *
    * @param userId - User identifier
    * @param params - Order parameters (size = shares, price = price per share)
    * @returns Order result with transaction hash if matched
    */
   async placeOrder(userId: string, params: OrderParams): Promise<OrderResult> {
-    // Calculate values based on order side
-    // BUY: amount = USDC to spend (use usdcAmount if provided, else shares * price)
-    // SELL: amount = number of shares to sell
     const isBuy = params.side === "BUY";
-    const amount = isBuy 
-      ? (params.usdcAmount ?? params.size * params.price) 
-      : params.size;
-    const usdcValue = params.usdcAmount ?? params.size * params.price;
+    const usdcToSpend = params.usdcAmount ?? params.size * params.price;
+    const sharesToSell = params.size;
+    // API expects: USDC for BUY, shares for SELL
+    const orderAmount = isBuy ? usdcToSpend : sharesToSell;
     
     logger.info(
-      `[PolymarketTradingService] Placing MARKET ${params.side} order for user ${userId.substring(0, 20)}... - ${params.size} shares @ $${params.price} (~$${usdcValue.toFixed(2)} USDC)`
+      `[PolymarketTradingService] Placing MARKET ${params.side} order for user ${userId.substring(0, 20)}... - ${params.size} shares @ $${params.price} (~$${usdcToSpend.toFixed(2)} USDC)`
     );
 
     // Basic validation
-    if (usdcValue < 1) {
+    if (usdcToSpend < 1) {
       return {
         orderId: "",
         status: "FAILED",
@@ -489,7 +490,7 @@ export class PolymarketTradingService extends Service {
       };
     }
 
-    if (usdcValue > this.maxTradeAmount) {
+    if (usdcToSpend > this.maxTradeAmount) {
       return {
         orderId: "",
         status: "FAILED",
@@ -503,10 +504,9 @@ export class PolymarketTradingService extends Service {
 
       // Use createAndPostMarketOrder for immediate execution
       // This uses FOK (Fill or Kill) by default - order either fills entirely or fails
-      // CRITICAL: For BUY, amount = USDC to spend. For SELL, amount = shares to sell!
       const response = await client.createAndPostMarketOrder({
         tokenID: params.tokenId,
-        amount: amount,
+        amount: orderAmount,
         side: isBuy ? Side.BUY : Side.SELL,
         feeRateBps: params.feeRateBps ?? 0,
       });
@@ -543,12 +543,23 @@ export class PolymarketTradingService extends Service {
         logger.info(
           `[PolymarketTradingService] Order MATCHED! TX: ${transactionHashes[0]}, Shares: ${takingAmount}, Cost: $${makingAmount}`
         );
+        
+        // Calculate executed price safely - ensure both amounts are valid non-zero numbers
+        let executedPrice: string | undefined;
+        if (makingAmount && takingAmount) {
+          const making = parseFloat(makingAmount);
+          const taking = parseFloat(takingAmount);
+          if (!isNaN(making) && !isNaN(taking) && taking !== 0) {
+            executedPrice = (making / taking).toFixed(4);
+          }
+        }
+        
         return {
           orderId,
           status: "FILLED",
           transactionHash: transactionHashes[0],
           executedSize: takingAmount,
-          executedPrice: makingAmount ? (parseFloat(makingAmount) / parseFloat(takingAmount)).toFixed(4) : undefined,
+          executedPrice,
           timestamp: Date.now(),
         };
       }
@@ -929,6 +940,10 @@ export class PolymarketTradingService extends Service {
 
   /**
    * Check if trading is set up for a user
+   * 
+   * Validates all required approvals for full trading capability:
+   * - USDC allowances for all 3 exchange contracts (BUY orders)
+   * - CTF token operator approvals for all 3 contracts (SELL orders)
    */
   async isSetupComplete(userId: string): Promise<boolean> {
     const state = this.userStates.get(userId);
@@ -938,12 +953,26 @@ export class PolymarketTradingService extends Service {
 
     const address = state.cdpAccount.address as Hex;
     const publicClient = this.getPublicClient();
+    
+    // Check all USDC allowances (required for BUY orders)
     const allowances = await checkAllAllowances(publicClient, address);
-
-    return (
+    const hasUsdcAllowances = 
       parseFloat(allowances.ctfExchange) > 0 &&
-      parseFloat(allowances.negRiskExchange) > 0
-    );
+      parseFloat(allowances.negRiskExchange) > 0 &&
+      parseFloat(allowances.negRiskAdapter) > 0;
+    
+    if (!hasUsdcAllowances) {
+      return false;
+    }
+    
+    // Check all CTF token approvals (required for SELL orders)
+    const ctfApprovals = await checkAllCtfApprovals(publicClient, address);
+    const hasCtfApprovals = 
+      ctfApprovals.ctfExchange &&
+      ctfApprovals.negRiskExchange &&
+      ctfApprovals.negRiskAdapter;
+
+    return hasCtfApprovals;
   }
 
   // ============================================================================

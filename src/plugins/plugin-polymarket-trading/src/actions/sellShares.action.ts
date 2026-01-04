@@ -157,13 +157,41 @@ export const sellSharesAction: Action = {
         };
       }
 
-      // Determine shares
-      let sharesToSell = position.size;
-      if (params.shares) {
+      // Determine shares to sell
+      let sharesToSell: number;
+      
+      if (params.shares !== undefined && params.shares !== null && params.shares !== "") {
+        // User explicitly specified a share amount - validate it strictly
         const requested = typeof params.shares === "string" ? parseFloat(params.shares) : params.shares;
-        if (requested > 0 && requested <= position.size) {
-          sharesToSell = requested;
+        
+        if (isNaN(requested)) {
+          return {
+            text: `Invalid shares value: "${params.shares}". Please provide a valid number.`,
+            success: false,
+            error: "invalid_shares_value",
+          };
         }
+        
+        if (requested <= 0) {
+          return {
+            text: `Invalid shares value: ${requested}. Shares must be a positive number.`,
+            success: false,
+            error: "invalid_shares_value",
+          };
+        }
+        
+        if (requested > position.size) {
+          return {
+            text: `Cannot sell ${requested.toFixed(2)} shares - you only have ${position.size.toFixed(2)} shares in this position.`,
+            success: false,
+            error: "insufficient_shares",
+          };
+        }
+        
+        sharesToSell = requested;
+      } else {
+        // No shares specified - sell all shares in position
+        sharesToSell = position.size;
       }
 
       // Get price
