@@ -2,6 +2,8 @@
  * POLYMARKET_REDEEM Action
  *
  * Redeem winnings from resolved Polymarket positions.
+ * Calls the Gnosis Conditional Tokens contract to burn winning
+ * outcome tokens and receive USDC collateral.
  */
 
 import {
@@ -22,6 +24,30 @@ interface RedeemParams {
   conditionId?: string;
 }
 
+// Polymarket Data API
+const DATA_API_URL = "https://data-api.polymarket.com";
+
+interface Position {
+  conditionId: string;
+  redeemable: boolean;
+  title: string;
+  size: number;
+  currentValue: number;
+  outcome: string;
+}
+
+/**
+ * Fetch positions from Polymarket Data API
+ */
+async function fetchPositions(walletAddress: string): Promise<Position[]> {
+  const url = `${DATA_API_URL}/positions?user=${walletAddress}`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch positions: ${response.status}`);
+  }
+  return (await response.json()) as Position[];
+}
+
 export const redeemWinningsAction: Action = {
   name: "POLYMARKET_REDEEM",
   similes: [
@@ -29,9 +55,20 @@ export const redeemWinningsAction: Action = {
     "CLAIM_POLYMARKET_WINNINGS",
     "POLYMARKET_CLAIM",
     "COLLECT_POLYMARKET_WINNINGS",
+    "CLAIM_WINNINGS",
   ],
-  description:
-    "Redeem winnings from resolved Polymarket positions. Converts winning shares to USDC.",
+  description: `Redeem winnings from resolved Polymarket positions. Converts winning shares to USDC.
+
+**How it works:**
+1. Fetches your positions from the Polymarket Data API
+2. Identifies positions marked as "redeemable" (resolved markets where you hold winning shares)
+3. Calls the Gnosis Conditional Tokens contract to redeem each position
+4. USDC is transferred to your wallet
+
+**Parameters:**
+- condition_id (optional): Specific condition ID to redeem. If not provided, redeems ALL redeemable positions.
+
+**Tip:** Use POLYMARKET_GET_MY_POSITIONS first to see which positions are redeemable (marked with ⚡).`,
 
   parameters: {
     condition_id: {
@@ -44,7 +81,6 @@ export const redeemWinningsAction: Action = {
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     try {
-      // Check plugin context first
       if (!shouldPolymarketTradingPluginBeInContext(state, message)) {
         return false;
       }
@@ -68,12 +104,12 @@ export const redeemWinningsAction: Action = {
     try {
       logger.info("[POLYMARKET_REDEEM] Processing redemption...");
 
-      // Get entity wallet (handles shared wallet scenario)
+      // Get entity wallet
       const wallet = await getEntityWallet(
         runtime,
         message,
         "POLYMARKET_REDEEM",
-        callback,
+        callback
       );
 
       if (wallet.success === false) {
@@ -81,17 +117,23 @@ export const redeemWinningsAction: Action = {
         return wallet.result;
       }
 
-      // Use the wallet's account name (walletEntityId) as the userId for the trading service
-      const userId = wallet.metadata?.walletEntityId || wallet.metadata?.accountName || message.entityId;
-      if (!userId) {
+      const userId =
+        wallet.metadata?.walletEntityId ||
+        wallet.metadata?.accountName ||
+        message.entityId;
+      const walletAddress = wallet.walletAddress;
+
+      if (!userId || !walletAddress) {
         return {
-          text: "Unable to identify entity.",
+          text: "Unable to identify entity or wallet.",
           success: false,
           error: "no_entity_id",
         };
       }
 
-      logger.info(`[POLYMARKET_REDEEM] Using wallet account: ${userId}, address: ${wallet.walletAddress}`);
+      logger.info(
+        `[POLYMARKET_REDEEM] Using wallet: ${walletAddress}, userId: ${userId.substring(0, 20)}...`
+      );
 
       const service = runtime.getService(
         PolymarketTradingService.serviceType
@@ -105,6 +147,7 @@ export const redeemWinningsAction: Action = {
         };
       }
 
+      // Check setup
       const isSetup = await service.isSetupComplete(userId);
       if (!isSetup) {
         return {
@@ -114,28 +157,165 @@ export const redeemWinningsAction: Action = {
         };
       }
 
-      // TODO: Implement redemption logic
-      // This requires:
-      // 1. Fetching user positions from the discovery plugin
-      // 2. Filtering for redeemable positions (resolved markets where user has winning shares)
-      // 3. Calling the CLOB client or contract to redeem
+      // Parse parameters
+      const composedState = await runtime.composeState(
+        message,
+        ["ACTION_STATE"],
+        true
+      );
+      const params = (composedState?.data?.actionParams ?? {}) as RedeemParams;
+      const specificConditionId = params.condition_id || params.conditionId;
 
-      // For now, return a placeholder response
-      let text = `\n**Polymarket Redemption**\n`;
-      text += `═══════════════════════════════════════════════════════\n\n`;
-      text += `⚠️ Redemption feature is under development.\n\n`;
-      text += `To redeem winnings manually:\n`;
-      text += `1. Go to https://polymarket.com/portfolio\n`;
-      text += `2. Find resolved markets with winning positions\n`;
-      text += `3. Click "Redeem" to collect your USDC\n\n`;
-      text += `Alternatively, use GET_POLYMARKET_POSITIONS to view your positions.\n`;
+      // First, fetch positions to show user what's redeemable
+      const positions = await fetchPositions(walletAddress);
+      const redeemablePositions = positions.filter((p) => p.redeemable);
+
+      if (redeemablePositions.length === 0) {
+        return {
+          text: `**Polymarket Redemption**
+═══════════════════════════════════════════════════════
+
+No redeemable positions found.
+
+Positions become redeemable after a market resolves and you hold winning shares.
+
+Use POLYMARKET_GET_MY_POSITIONS to view your current positions.`,
+          success: true,
+          data: { redeemableCount: 0, redeemed: [] },
+        };
+      }
+
+      // If specific condition ID provided, validate it
+      if (specificConditionId) {
+        const targetPosition = redeemablePositions.find(
+          (p) => p.conditionId === specificConditionId
+        );
+
+        if (!targetPosition) {
+          return {
+            text: `**Condition ID Not Found or Not Redeemable**
+
+The condition ID \`${specificConditionId.substring(0, 20)}...\` is either:
+- Not in your positions
+- Not yet resolved
+- Already redeemed
+
+**Redeemable positions:**
+${redeemablePositions.map((p) => `• ${p.outcome.toUpperCase()} - ${p.title.substring(0, 50)}...`).join("\n")}`,
+            success: false,
+            error: "condition_not_found",
+          };
+        }
+
+        // Redeem specific position
+        logger.info(
+          `[POLYMARKET_REDEEM] Redeeming specific condition: ${specificConditionId.substring(0, 20)}...`
+        );
+
+        const result = await service.redeemPosition(userId, specificConditionId);
+
+        if (result.success) {
+          return {
+            text: `✅ **Redemption Successful**
+═══════════════════════════════════════════════════════
+
+**Market:** ${targetPosition.title}
+**Position:** ${targetPosition.outcome.toUpperCase()}
+**Shares Redeemed:** ${targetPosition.size.toFixed(2)}
+
+**Transaction:** [\`${result.transactionHash.substring(0, 18)}...\`](https://polygonscan.com/tx/${result.transactionHash})
+
+USDC has been credited to your wallet.`,
+            success: true,
+            data: {
+              conditionId: specificConditionId,
+              transactionHash: result.transactionHash,
+              market: targetPosition.title,
+              outcome: targetPosition.outcome,
+              shares: targetPosition.size,
+            },
+          };
+        } else {
+          return {
+            text: `❌ **Redemption Failed**
+
+**Market:** ${targetPosition.title}
+**Error:** ${result.error}
+
+This may be due to:
+- Market not yet fully resolved
+- Insufficient gas (POL)
+- Network issues
+
+Please try again later.`,
+            success: false,
+            error: result.error,
+          };
+        }
+      }
+
+      // Redeem all redeemable positions
+      logger.info(
+        `[POLYMARKET_REDEEM] Redeeming all ${redeemablePositions.length} redeemable positions...`
+      );
+
+      const results = await service.redeemAllPositions(userId);
+
+      const successful = results.filter((r) => r.success);
+      const failed = results.filter((r) => !r.success);
+
+      // Build response
+      let text = `**Polymarket Redemption Results**
+═══════════════════════════════════════════════════════
+
+`;
+
+      if (successful.length > 0) {
+        text += `✅ **Successfully Redeemed: ${successful.length}**\n\n`;
+
+        for (const result of successful) {
+          const position = redeemablePositions.find(
+            (p) => p.conditionId === result.conditionId
+          );
+          const title = position?.title || "Unknown Market";
+
+          text += `• ${title.substring(0, 50)}...\n`;
+          text += `  TX: [\`${result.transactionHash.substring(0, 18)}...\`](https://polygonscan.com/tx/${result.transactionHash})\n\n`;
+        }
+      }
+
+      if (failed.length > 0) {
+        text += `\n❌ **Failed: ${failed.length}**\n\n`;
+
+        for (const result of failed) {
+          const position = redeemablePositions.find(
+            (p) => p.conditionId === result.conditionId
+          );
+          const title = position?.title || "Unknown Market";
+
+          text += `• ${title.substring(0, 50)}...\n`;
+          text += `  Error: ${result.error}\n\n`;
+        }
+      }
+
+      if (successful.length === 0 && failed.length === 0) {
+        text +=
+          "No positions were processed. This may indicate the positions were already redeemed.";
+      }
 
       return {
         text,
-        success: true,
+        success: successful.length > 0,
         data: {
-          message: "Redemption feature under development",
-          manualRedemptionUrl: "https://polymarket.com/portfolio",
+          redeemableCount: redeemablePositions.length,
+          successCount: successful.length,
+          failedCount: failed.length,
+          results: results.map((r) => ({
+            conditionId: r.conditionId,
+            success: r.success,
+            transactionHash: r.transactionHash,
+            error: r.error,
+          })),
         },
       };
     } catch (error) {
@@ -158,7 +338,20 @@ export const redeemWinningsAction: Action = {
       {
         name: "{{agent}}",
         content: {
-          text: "Let me check for redeemable positions...",
+          text: "Let me check for redeemable positions and redeem them...",
+          action: "POLYMARKET_REDEEM",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{user}}",
+        content: { text: "claim my prediction market winnings" },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "I'll redeem your winning positions on Polymarket...",
           action: "POLYMARKET_REDEEM",
         },
       },

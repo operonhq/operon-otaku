@@ -173,6 +173,52 @@ export const ERC20_ABI = [
 ] as const;
 
 // ============================================================================
+// Conditional Tokens ABI (for redemption)
+// ============================================================================
+
+export const CONDITIONAL_TOKENS_ABI = [
+  {
+    name: "redeemPositions",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "collateralToken", type: "address" },
+      { name: "parentCollectionId", type: "bytes32" },
+      { name: "conditionId", type: "bytes32" },
+      { name: "indexSets", type: "uint256[]" },
+    ],
+    outputs: [],
+  },
+  {
+    name: "balanceOf",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "id", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "payoutDenominator",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "conditionId", type: "bytes32" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "payoutNumerators",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "conditionId", type: "bytes32" },
+      { name: "outcomeIndex", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+] as const;
+
+// ============================================================================
 // Error Messages
 // ============================================================================
 
