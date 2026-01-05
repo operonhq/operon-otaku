@@ -11,9 +11,24 @@ import {
   createAuthRateLimit,
 } from "../../middleware";
 
-// Create auth rate limiter instances
-const authRateLimiter = createAuthRateLimit();
-const refreshRateLimiter = createAuthRateLimit(); // Same limits for refresh endpoint
+// Rate limiters are lazily initialized to avoid bundler hoisting issues
+// (createAuthRateLimit may not be available at module load time due to bundler ordering)
+let authRateLimiter: ReturnType<typeof createAuthRateLimit> | null = null;
+let refreshRateLimiter: ReturnType<typeof createAuthRateLimit> | null = null;
+
+function getAuthRateLimiter() {
+  if (!authRateLimiter) {
+    authRateLimiter = createAuthRateLimit();
+  }
+  return authRateLimiter;
+}
+
+function getRefreshRateLimiter() {
+  if (!refreshRateLimiter) {
+    refreshRateLimiter = createAuthRateLimit();
+  }
+  return refreshRateLimiter;
+}
 
 /**
  * User Registry - maps (cdpUserId, email) to server-generated entityId
@@ -511,7 +526,7 @@ export function createAuthRouter(serverInstance: AgentServer): express.Router {
    * - JWT expires in 24 hours (use /refresh to extend)
    * - Uses parameterized queries to prevent SQL injection
    */
-  router.post("/login", authRateLimiter, async (req, res) => {
+  router.post("/login", getAuthRateLimiter(), async (req, res) => {
     try {
       const { email, username, cdpUserId } = req.body;
 
@@ -599,7 +614,7 @@ export function createAuthRouter(serverInstance: AgentServer): express.Router {
    */
   router.post(
     "/refresh",
-    refreshRateLimiter,
+    getRefreshRateLimiter(),
     async (req: AuthenticatedRequest, res) => {
       try {
         const authHeader = req.headers.authorization;
