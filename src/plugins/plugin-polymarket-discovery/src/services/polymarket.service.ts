@@ -597,32 +597,43 @@ export class PolymarketService extends Service {
           market = mapApiMarketToInterface(markets[0]);
         }
       } else {
-        // Fallback for condition_id: fetch from events and filter client-side
-        // (Gamma API doesn't support direct condition_id lookup)
-        logger.debug(`[PolymarketService] Fetching market by condition_id (fallback): ${identifier}`);
-        const url = `${this.gammaApiUrl}/events/pagination?limit=500&active=true&archived=false&closed=false&order=volume24hr&ascending=false&offset=0`;
+        // Try /markets?condition_id=xxx first (direct lookup)
+        logger.debug(`[PolymarketService] Fetching market by condition_id: ${identifier}`);
+        const url = `${this.gammaApiUrl}/markets?condition_id=${identifier}`;
         const response = await this.fetchWithTimeout(url);
-
+        
         if (!response.ok) {
           throw new Error(`Gamma API error: ${response.status} ${response.statusText}`);
         }
+        
+        const markets = await response.json() as any[];
+        if (markets && markets.length > 0) {
+          market = mapApiMarketToInterface(markets[0]);
+        } else {
+          // Fallback: search events without active filter (includes closed markets)
+          logger.debug(`[PolymarketService] condition_id direct lookup returned no results, trying events fallback: ${identifier}`);
+          const eventsUrl = `${this.gammaApiUrl}/events/pagination?limit=500&order=volume24hr&ascending=false&offset=0`;
+          const eventsResponse = await this.fetchWithTimeout(eventsUrl);
 
-        const responseData = await response.json() as { data: any[] };
-        const eventsData = responseData.data || [];
-        
-        // Extract markets from events
-        const allMarkets: any[] = [];
-        for (const event of eventsData) {
-          if (event.markets && Array.isArray(event.markets)) {
-            const activeMarkets = event.markets.filter((m: any) => 
-              m.active === true && m.closed === false && m.archived === false
-            );
-            allMarkets.push(...activeMarkets);
+          if (!eventsResponse.ok) {
+            throw new Error(`Gamma API error: ${eventsResponse.status} ${eventsResponse.statusText}`);
           }
+
+          const responseData = await eventsResponse.json() as { data: any[] };
+          const eventsData = responseData.data || [];
+          
+          // Extract ALL markets from events (including closed)
+          const allMarkets: any[] = [];
+          for (const event of eventsData) {
+            if (event.markets && Array.isArray(event.markets)) {
+              // Don't filter by active/closed - include all markets
+              allMarkets.push(...event.markets);
+            }
+          }
+          
+          const mappedMarkets = allMarkets.map(mapApiMarketToInterface);
+          market = mappedMarkets.find((m) => m.condition_id === identifier) || null;
         }
-        
-        const mappedMarkets = allMarkets.map(mapApiMarketToInterface);
-        market = mappedMarkets.find((m) => m.condition_id === identifier) || null;
       }
 
       if (!market) {
