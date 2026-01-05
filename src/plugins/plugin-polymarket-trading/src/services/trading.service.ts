@@ -976,6 +976,215 @@ export class PolymarketTradingService extends Service {
   }
 
   // ============================================================================
+  // Redemption
+  // ============================================================================
+
+  /**
+   * Redeem winnings from a resolved market position
+   *
+   * Calls the Gnosis Conditional Tokens contract's redeemPositions function.
+   * This burns the winning outcome tokens and returns USDC collateral.
+   *
+   * @param userId - User identifier
+   * @param conditionId - The condition ID of the resolved market
+   * @param indexSets - Array of index sets to redeem (default: [1, 2] for both outcomes)
+   * @returns Redemption result with transaction hash
+   */
+  async redeemPosition(
+    userId: string,
+    conditionId: string,
+    indexSets: number[] = [1, 2]
+  ): Promise<import("../types").RedemptionResult> {
+    logger.info(
+      `[PolymarketTradingService] Redeeming position for condition: ${conditionId.substring(0, 20)}...`
+    );
+
+    try {
+      const state = await this.getOrCreateUserState(userId);
+      const address = state.cdpAccount.address as Hex;
+
+      // Import the ABI dynamically to avoid circular imports
+      const { CONDITIONAL_TOKENS_ABI } = await import("../constants");
+
+      // Create wallet client for transaction
+      const { createWalletClient, http } = await import("viem");
+      const { polygon } = await import("viem/chains");
+      const { toAccount } = await import("viem/accounts");
+
+      const walletClient = createWalletClient({
+        account: toAccount(state.cdpAccount),
+        chain: polygon,
+        transport: http(this.polygonRpcUrl),
+      });
+
+      const publicClient = this.getPublicClient();
+
+      // Prepare the parent collection ID (null for root positions)
+      const parentCollectionId =
+        "0x0000000000000000000000000000000000000000000000000000000000000000" as Hex;
+
+      // Convert indexSets to bigints
+      const indexSetsBigInt = indexSets.map((i) => BigInt(i));
+
+      logger.info(
+        `[PolymarketTradingService] Calling redeemPositions on CTF contract...`
+      );
+
+      // Call redeemPositions on the Conditional Tokens contract
+      // @ts-expect-error - Account is attached to wallet client but types don't fully infer
+      const hash = await walletClient.writeContract({
+        address: CONTRACTS.CONDITIONAL_TOKENS,
+        abi: CONDITIONAL_TOKENS_ABI,
+        functionName: "redeemPositions",
+        args: [
+          CONTRACTS.USDC_BRIDGED, // collateralToken
+          parentCollectionId, // parentCollectionId (null for root)
+          conditionId as Hex, // conditionId
+          indexSetsBigInt, // indexSets
+        ],
+        chain: polygon,
+      });
+
+      logger.info(
+        `[PolymarketTradingService] Redemption TX submitted: ${hash}`
+      );
+
+      // Wait for confirmation
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+
+      if (receipt.status === "success") {
+        logger.info(
+          `[PolymarketTradingService] Redemption successful! TX: ${hash}`
+        );
+
+        return {
+          conditionId,
+          amount: "0", // TODO: Parse from receipt logs
+          transactionHash: hash,
+          success: true,
+        };
+      } else {
+        logger.error(
+          `[PolymarketTradingService] Redemption TX failed: ${hash}`
+        );
+
+        return {
+          conditionId,
+          amount: "0",
+          transactionHash: hash,
+          success: false,
+          error: "Transaction reverted",
+        };
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error(
+        `[PolymarketTradingService] Redemption failed: ${errorMsg}`
+      );
+
+      return {
+        conditionId,
+        amount: "0",
+        transactionHash: "",
+        success: false,
+        error: errorMsg,
+      };
+    }
+  }
+
+  /**
+   * Redeem all redeemable positions for a user
+   *
+   * Fetches positions from the Data API, filters for redeemable ones,
+   * and redeems each one.
+   *
+   * @param userId - User identifier
+   * @returns Array of redemption results
+   */
+  async redeemAllPositions(
+    userId: string
+  ): Promise<import("../types").RedemptionResult[]> {
+    logger.info(
+      `[PolymarketTradingService] Redeeming all positions for user: ${userId.substring(0, 20)}...`
+    );
+
+    const results: import("../types").RedemptionResult[] = [];
+
+    try {
+      const walletAddress = await this.getWalletAddress(userId);
+
+      // Fetch positions from Data API
+      const response = await fetch(
+        `https://data-api.polymarket.com/positions?user=${walletAddress}`
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch positions: ${response.status}`);
+      }
+
+      const positions = (await response.json()) as Array<{
+        conditionId: string;
+        redeemable: boolean;
+        title: string;
+        size: number;
+        negativeRisk: boolean;
+      }>;
+
+      // Filter for redeemable positions
+      const redeemablePositions = positions.filter((p) => p.redeemable);
+
+      if (redeemablePositions.length === 0) {
+        logger.info(
+          `[PolymarketTradingService] No redeemable positions found`
+        );
+        return [];
+      }
+
+      logger.info(
+        `[PolymarketTradingService] Found ${redeemablePositions.length} redeemable positions`
+      );
+
+      // Redeem each position
+      // Group by conditionId to avoid duplicate redemptions
+      const uniqueConditions = new Map<
+        string,
+        { title: string; negativeRisk: boolean }
+      >();
+      for (const pos of redeemablePositions) {
+        if (!uniqueConditions.has(pos.conditionId)) {
+          uniqueConditions.set(pos.conditionId, {
+            title: pos.title,
+            negativeRisk: pos.negativeRisk,
+          });
+        }
+      }
+
+      for (const [conditionId, info] of uniqueConditions) {
+        logger.info(
+          `[PolymarketTradingService] Redeeming: ${info.title.substring(0, 40)}...`
+        );
+
+        // For binary markets, redeem both outcomes [1, 2]
+        // The contract will only pay out for the winning outcome
+        const result = await this.redeemPosition(userId, conditionId, [1, 2]);
+        results.push(result);
+
+        // Small delay between redemptions to avoid rate limiting
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+
+      return results;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error(
+        `[PolymarketTradingService] Redeem all failed: ${errorMsg}`
+      );
+
+      return results;
+    }
+  }
+
+  // ============================================================================
   // Configuration Accessors
   // ============================================================================
 
