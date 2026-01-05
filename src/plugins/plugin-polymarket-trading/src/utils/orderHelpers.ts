@@ -215,10 +215,18 @@ export function formatOrderSummary(params: PlaceOrderParams): string {
 /**
  * Parse outcome string to normalized format
  *
- * @param outcome - Outcome string (case insensitive)
- * @returns Normalized "YES" or "NO"
+ * For standard binary markets, normalizes to "YES" or "NO".
+ * For sports/multi-outcome markets, accepts any outcome name (e.g., team names).
+ *
+ * The token_id determines the actual position being traded, so the outcome
+ * is primarily used for display purposes. Sports markets return outcome names
+ * like "Arsenal" or "Bournemouth" which should pass through unchanged.
+ *
+ * @param outcome - Outcome string (case insensitive for YES/NO)
+ * @param strict - If true, throws for non-YES/NO outcomes (default: false)
+ * @returns Normalized "YES", "NO", or the original outcome for sports markets
  */
-export function parseOutcome(outcome: string): "YES" | "NO" {
+export function parseOutcome(outcome: string, strict: boolean = false): string {
   const normalized = outcome.toUpperCase().trim();
 
   if (normalized === "YES" || normalized === "Y") {
@@ -229,7 +237,14 @@ export function parseOutcome(outcome: string): "YES" | "NO" {
     return "NO";
   }
 
-  throw new Error(`Invalid outcome: ${outcome}. Must be 'YES' or 'NO'.`);
+  // For sports markets and multi-outcome markets, allow any outcome name
+  // The token_id is what actually determines the position being traded
+  if (strict) {
+    throw new Error(`Invalid outcome: ${outcome}. Must be 'YES' or 'NO'.`);
+  }
+
+  // Return original outcome (trimmed) for display purposes
+  return outcome.trim();
 }
 
 /**

@@ -27,7 +27,7 @@ import {
   calculateMaxGain,
   isValidTokenId,
 } from "../utils/orderHelpers";
-import { MIN_ORDER_SIZE_USDC } from "../constants";
+import { MIN_ORDER_SIZE_USDC, MIN_PRICE, MAX_PRICE } from "../constants";
 
 interface BuySharesParams {
   // Required parameters
@@ -298,16 +298,9 @@ The token_id provided (\`${tokenId}\`) is not a valid Polymarket token ID.
       // ========================================================================
       // STEP 2: Parse and validate parameter values
       // ========================================================================
-      let outcome: "YES" | "NO";
-      try {
-        outcome = parseOutcome(outcomeStr!);
-      } catch (e) {
-        return {
-          text: `❌ **Invalid Outcome**\n\nGot: "${outcomeStr}"\nExpected: "YES" or "NO"`,
-          success: false,
-          error: "invalid_outcome",
-        };
-      }
+      // parseOutcome now accepts any outcome string for sports markets (team names, etc.)
+      // It normalizes YES/NO but passes through other outcomes unchanged
+      const outcome = parseOutcome(outcomeStr!);
 
       const amount = typeof amountStr === "string" ? parseFloat(amountStr) : amountStr!;
       if (isNaN(amount) || amount <= 0) {
@@ -319,9 +312,9 @@ The token_id provided (\`${tokenId}\`) is not a valid Polymarket token ID.
       }
 
       const price = typeof priceStr === "string" ? parseFloat(priceStr) : priceStr!;
-      if (isNaN(price) || price <= 0 || price >= 1) {
+      if (isNaN(price) || price < MIN_PRICE || price > MAX_PRICE) {
         return {
-          text: `❌ **Invalid Price**\n\nGot: "${priceStr}"\nExpected: A number between 0.01 and 0.99\n\n**Tip:** Use yes_price or no_price from SEARCH_POLYMARKETS results.`,
+          text: `❌ **Invalid Price**\n\nGot: "${priceStr}"\nExpected: A number between ${MIN_PRICE} and ${MAX_PRICE}\n\n**Tip:** Use yes_price or no_price from SEARCH_POLYMARKETS results.`,
           success: false,
           error: "invalid_price",
         };

@@ -93,8 +93,13 @@ export class CdpSignerAdapter implements ICdpSignerAdapter {
    * @returns Hex-encoded signature
    */
   async signMessage(message: string | Uint8Array): Promise<string> {
+    // For string messages, use directly
+    // For binary data (Uint8Array), convert to hex to preserve byte values
+    // UTF-8 decoding can corrupt arbitrary binary data that isn't valid UTF-8
     const messageStr =
-      typeof message === "string" ? message : Buffer.from(message).toString();
+      typeof message === "string"
+        ? message
+        : `0x${Buffer.from(message).toString("hex")}`;
 
     return this.cdpAccount.signMessage({ message: messageStr });
   }

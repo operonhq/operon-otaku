@@ -176,8 +176,27 @@ export const placeLimitOrderAction: Action = {
       const side = parseSide(sideStr);
       const price =
         typeof priceStr === "string" ? parseFloat(priceStr) : priceStr;
-      const size =
-        typeof sizeStr === "string" ? parseInt(sizeStr, 10) : sizeStr;
+      // Use parseFloat to properly parse the value, then validate it's a whole number
+      const sizeRaw =
+        typeof sizeStr === "string" ? parseFloat(sizeStr) : sizeStr;
+
+      // Validate size is a positive whole number
+      if (isNaN(sizeRaw) || sizeRaw <= 0) {
+        return {
+          text: "Invalid size: must be a positive number of shares.",
+          success: false,
+          error: "invalid_size",
+        };
+      }
+
+      // Check if fractional and warn - use floor to round down
+      const size = Math.floor(sizeRaw);
+      if (sizeRaw !== size) {
+        logger.warn(
+          `[POLYMARKET_PLACE_LIMIT_ORDER] Size ${sizeRaw} has fractional component, rounding down to ${size} shares`
+        );
+      }
+
       const outcome = parseOutcome(outcomeStr);
 
       const validation = validateOrderParams({
