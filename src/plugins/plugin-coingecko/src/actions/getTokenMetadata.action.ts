@@ -11,7 +11,10 @@ import {
   TokenMetadataCandidate,
   TokenMetadataResolution,
 } from "../services/coingecko.service";
-import { validateCoingeckoService, getCoingeckoService } from "../utils/actionHelpers";
+import {
+  validateCoingeckoService,
+  getCoingeckoService,
+} from "../utils/actionHelpers";
 
 const MAX_ALTERNATIVE_CANDIDATES = 3;
 
@@ -76,7 +79,8 @@ function summarizeResolution(result: TokenMetadataResolution): string {
   }
 
   const primaryCandidate =
-    result.candidates.find((candidate) => candidate.metadata) ?? result.candidates[0];
+    result.candidates.find((candidate) => candidate.metadata) ??
+    result.candidates[0];
 
   if (!primaryCandidate) {
     return `${result.id}: No matching tokens found`;
@@ -92,7 +96,10 @@ function summarizeResolution(result: TokenMetadataResolution): string {
 
   if (alternativeCandidates.length > 0) {
     const alternativesText = alternativeCandidates
-      .map((candidate) => `${describeCandidate(candidate)} (${formatConfidencePercentage(candidate.confidence)})`)
+      .map(
+        (candidate) =>
+          `${describeCandidate(candidate)} (${formatConfidencePercentage(candidate.confidence)})`,
+      )
       .join(", ");
     summaryParts.push(`Alternatives: ${alternativesText}`);
   }
@@ -115,13 +122,23 @@ export const getTokenMetadataAction: Action = {
   parameters: {
     tokens: {
       type: "string",
-      description: "Comma-separated list of token identifiers (symbols, names, CoinGecko IDs, or contract addresses). Examples: 'bitcoin,ethereum' or 'BTC,ETH' or '0x2081...946ee'",
+      description:
+        "Comma-separated list of token identifiers (symbols, names, CoinGecko IDs, or contract addresses). Examples: 'bitcoin,ethereum' or 'BTC,ETH' or '0x2081...946ee'",
       required: true,
     },
   },
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    return validateCoingeckoService(runtime, "GET_TOKEN_METADATA", state, message);
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> => {
+    return validateCoingeckoService(
+      runtime,
+      "GET_TOKEN_METADATA",
+      state,
+      message,
+    );
   },
 
   handler: async (
@@ -138,14 +155,23 @@ export const getTokenMetadataAction: Action = {
       }
 
       // Read parameters from state (extracted by multiStepDecisionTemplate)
-      const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-      const actionParams = composedState?.data?.actionParams as Record<string, string | undefined> | undefined;
+      const composedState = await runtime.composeState(
+        message,
+        ["ACTION_STATE"],
+        true,
+      );
+      const actionParams = composedState?.data?.actionParams as
+        | Record<string, string | undefined>
+        | undefined;
 
       // Extract and validate tokens parameter (required)
-      const tokensRaw = actionParams?.tokens ? actionParams.tokens.trim() : undefined;
+      const tokensRaw = actionParams?.tokens
+        ? actionParams.tokens.trim()
+        : undefined;
 
       if (!tokensRaw) {
-        const errorMsg = "Missing required parameter 'tokens'. Please specify which token(s) to fetch metadata for (e.g., 'bitcoin,ethereum' or 'BTC,ETH').";
+        const errorMsg =
+          "Missing required parameter 'tokens'. Please specify which token(s) to fetch metadata for (e.g., 'bitcoin,ethereum' or 'BTC,ETH').";
         logger.error(`[GET_TOKEN_METADATA] ${errorMsg}`);
         const errorResult: ActionResult = {
           text: errorMsg,
@@ -168,7 +194,8 @@ export const getTokenMetadataAction: Action = {
         .filter(Boolean);
 
       if (!ids.length) {
-        const errorMsg = "No valid token identifiers found. Please provide token symbols, names, CoinGecko IDs, or contract addresses.";
+        const errorMsg =
+          "No valid token identifiers found. Please provide token symbols, names, CoinGecko IDs, or contract addresses.";
         logger.error(`[GET_TOKEN_METADATA] ${errorMsg}`);
         const errorResult: ActionResult = {
           text: errorMsg,
@@ -184,16 +211,21 @@ export const getTokenMetadataAction: Action = {
         return errorResult;
       }
 
-      logger.info(`[GET_TOKEN_METADATA] Fetching metadata for: ${ids.join(", ")}`);
+      logger.info(
+        `[GET_TOKEN_METADATA] Fetching metadata for: ${ids.join(", ")}`,
+      );
 
       // Store input parameters for return
       const inputParams = { tokens: tokensRaw, parsedIds: ids };
 
       // Fetch token metadata
-      const serviceResults: TokenMetadataResolution[] = await svc.getTokenMetadata(ids);
+      const serviceResults: TokenMetadataResolution[] =
+        await svc.getTokenMetadata(ids);
       const successes = serviceResults.filter((result) => result.success);
       const failures = serviceResults.filter((result) => !result.success);
-      const summaryLines = serviceResults.map((result) => summarizeResolution(result));
+      const summaryLines = serviceResults.map((result) =>
+        summarizeResolution(result),
+      );
 
       const header = `Resolved ${successes.length}/${serviceResults.length} token queries.`;
       const text = [header, ...summaryLines].join("\n");
@@ -213,7 +245,7 @@ export const getTokenMetadataAction: Action = {
       return {
         text,
         success: successes.length > 0,
-        data: serviceResults,
+        data: { results: serviceResults },
         values: {
           results: serviceResults,
           summary: summaryLines,
@@ -221,25 +253,31 @@ export const getTokenMetadataAction: Action = {
           failureCount: failures.length,
         },
         input: inputParams,
-      } as ActionResult & { input: typeof inputParams };
+      } as unknown as ActionResult & { input: typeof inputParams };
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.error(`[GET_TOKEN_METADATA] Action failed: ${msg}`);
-      
+
       // Try to capture input params even in failure
-      const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-      const actionParams = composedState?.data?.actionParams as Record<string, string | undefined> | undefined;
+      const composedState = await runtime.composeState(
+        message,
+        ["ACTION_STATE"],
+        true,
+      );
+      const actionParams = composedState?.data?.actionParams as
+        | Record<string, string | undefined>
+        | undefined;
       const failureInputParams = {
         tokens: actionParams?.tokens,
       };
-      
+
       const errorResult: ActionResult = {
         text: `Failed to fetch token metadata: ${msg}`,
         success: false,
         error: msg,
         input: failureInputParams,
       } as ActionResult & { input: typeof failureInputParams };
-      
+
       if (callback) {
         await callback({
           text: errorResult.text,
@@ -266,4 +304,3 @@ export const getTokenMetadataAction: Action = {
     ],
   ],
 };
-

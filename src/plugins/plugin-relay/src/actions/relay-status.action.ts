@@ -72,7 +72,7 @@ export const relayStatusAction: Action = {
         let earlyFailureInput = {};
         try {
           const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-          const params = composedState?.data?.actionParams || {};
+          const params = (composedState?.data?.actionParams || {}) as Record<string, any>;
           earlyFailureInput = {
             requestId: params?.requestId,
             txHash: params?.txHash,
@@ -153,7 +153,7 @@ export const relayStatusAction: Action = {
       // If no direct data found, try to extract from actionParams
       if (!statusParams) {
         const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-        const params = composedState?.data?.actionParams || {};
+        const params = (composedState?.data?.actionParams || {}) as Record<string, any>;
 
         statusParams = {
           requestId: params?.requestId?.trim(),
@@ -237,7 +237,7 @@ export const relayStatusAction: Action = {
       let catchFailureInput = {};
       try {
         const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-        const params = composedState?.data?.actionParams || {};
+        const params = (composedState?.data?.actionParams || {}) as Record<string, any>;
         catchFailureInput = {
           requestId: params?.requestId,
           txHash: params?.txHash,

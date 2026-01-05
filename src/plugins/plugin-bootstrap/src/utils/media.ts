@@ -1,4 +1,4 @@
-import { type IAgentRuntime, type Media, ModelType } from '@elizaos/core';
+import { type IAgentRuntime, type Media, ModelType } from "@elizaos/core";
 
 /**
  * Represents media data containing a buffer of data and the media type.
@@ -14,15 +14,20 @@ export type MediaData = {
  * @param attachments - Array of Media objects containing URLs or file paths to fetch media from
  * @returns Promise that resolves with an array of MediaData objects containing the fetched media data and content type
  */
-export async function fetchMediaData(attachments: Media[]): Promise<MediaData[]> {
+export async function fetchMediaData(
+  attachments: Media[],
+): Promise<MediaData[]> {
   return Promise.all(
     attachments.map(async (attachment: Media) => {
       // Check if URL starts with http or https
-      if (attachment.url.startsWith('http://') || attachment.url.startsWith('https://')) {
+      if (
+        attachment.url.startsWith("http://") ||
+        attachment.url.startsWith("https://")
+      ) {
         // Fetch from URL
         const response = await fetch(attachment.url);
         const mediaBuffer = Buffer.from(await response.arrayBuffer());
-        const mediaType = attachment.contentType || 'image/png';
+        const mediaType = attachment.contentType || "image/png";
         return { data: mediaBuffer, mediaType };
       }
 
@@ -31,8 +36,8 @@ export async function fetchMediaData(attachments: Media[]): Promise<MediaData[]>
       //   const mediaType = attachment.contentType || 'image/png';
       //   return { data: mediaBuffer, mediaType };
 
-      throw new Error('Local file paths are not supported yet');
-    })
+      throw new Error("Local file paths are not supported yet");
+    }),
   );
 }
 
@@ -46,71 +51,86 @@ export async function fetchMediaData(attachments: Media[]): Promise<MediaData[]>
  */
 export async function processAttachments(
   attachments: Media[],
-  runtime: IAgentRuntime
+  runtime: IAgentRuntime,
 ): Promise<Media[]> {
   if (!attachments || attachments.length === 0) {
     return [];
   }
-  runtime.logger.debug(`[Bootstrap] Processing ${attachments.length} attachment(s)`);
+  runtime.logger.debug(
+    `[Bootstrap] Processing ${attachments.length} attachment(s)`,
+  );
 
   const processedAttachments: Media[] = [];
 
   for (const attachment of attachments) {
     // Only process supported media types
-    if (attachment.contentType?.startsWith('image/') || attachment.contentType?.startsWith('application/pdf')) {
+    if (
+      attachment.contentType?.startsWith("image/") ||
+      attachment.contentType?.startsWith("application/pdf")
+    ) {
       const processedAttachment: Media = { ...attachment };
 
       // Only process if description doesn't exist
       if (!processedAttachment.description) {
         try {
-          let base64Data = '';
+          let base64Data = "";
           let mimeType = attachment.contentType;
 
           // Only convert local/internal media to base64
-          if (!attachment.url.startsWith('http://') && !attachment.url.startsWith('https://')) {
+          if (
+            !attachment.url.startsWith("http://") &&
+            !attachment.url.startsWith("https://")
+          ) {
             // For local files, we'd need to read and convert
             // Currently this is not implemented
-            runtime.logger.debug('[Bootstrap] Skipping local file processing:', attachment.url);
+            runtime.logger.debug(
+              "[Bootstrap] Skipping local file processing:",
+              attachment.url,
+            );
             processedAttachments.push(attachment);
             continue;
           } else {
             // For external URLs, fetch and convert
             const response = await fetch(attachment.url);
             const buffer = Buffer.from(await response.arrayBuffer());
-            base64Data = buffer.toString('base64');
-            mimeType = attachment.contentType || response.headers.get('content-type') || 'image/png';
+            base64Data = buffer.toString("base64");
+            mimeType =
+              attachment.contentType ||
+              response.headers.get("content-type") ||
+              "image/png";
           }
 
-          // Generate description using multimodal LLM
-          const descriptionPrompt = `Describe this ${mimeType.startsWith('image/') ? 'image' : 'document'} in detail. Include:
-1. What you see in the content
-2. Any text visible in the content
-3. The overall context and purpose
-4. Any notable details or important information
+          // Generate description using vision model for images
+          let description: string;
 
-Be concise but thorough.`;
-
-          const description = await runtime.useModel(ModelType.TEXT_SMALL, {
-            prompt: descriptionPrompt,
-            attachments: [
-              {
-                ...attachment,
-                data: base64Data,
-                contentType: mimeType,
-              },
-            ],
-          });
+          if (mimeType?.startsWith("image/")) {
+            // Use IMAGE_DESCRIPTION model for images
+            const result = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
+              imageUrl: attachment.url,
+              prompt:
+                "Describe this image in detail. Include what you see, any text visible, the overall context and purpose, and any notable details.",
+            });
+            description =
+              typeof result === "string"
+                ? result
+                : (result as { description?: string })?.description ||
+                  `${mimeType} attachment`;
+          } else {
+            // For non-image attachments, use a generic description
+            description = `Document attachment: ${attachment.title || attachment.url}`;
+          }
 
           processedAttachment.description = description;
-          processedAttachment.title = attachment.title || `${mimeType} attachment`;
+          processedAttachment.title =
+            attachment.title || `${mimeType} attachment`;
           processedAttachment.text = description; // Store description as text for easy access
 
           runtime.logger.debug(
-            `[Bootstrap] Generated description for attachment: ${attachment.url}`
+            `[Bootstrap] Generated description for attachment: ${attachment.url}`,
           );
         } catch (error) {
           runtime.logger.error(
-            `[Bootstrap] Error processing attachment: ${attachment.url} - ${error instanceof Error ? error.message : String(error)}`
+            `[Bootstrap] Error processing attachment: ${attachment.url} - ${error instanceof Error ? error.message : String(error)}`,
           );
         }
       }
@@ -124,4 +144,3 @@ Be concise but thorough.`;
 
   return processedAttachments;
 }
-

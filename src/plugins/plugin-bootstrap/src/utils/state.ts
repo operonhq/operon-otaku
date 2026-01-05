@@ -1,4 +1,4 @@
-import type { IAgentRuntime, Memory, State } from '@elizaos/core';
+import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
 
 /**
  * Refreshes state after action execution to keep prompts and action results in sync
@@ -14,17 +14,17 @@ export async function refreshStateAfterAction(
   runtime: IAgentRuntime,
   message: Memory,
   currentState: State,
-  actionResults: unknown[]
+  actionResults: unknown[],
 ): Promise<State> {
   // Recompose state with updated wallet info and action results
   const refreshedState = await runtime.composeState(message, [
-    'RECENT_MESSAGES',
-    'ACTION_STATE',
-    'WALLET_STATE',
+    "RECENT_MESSAGES",
+    "ACTION_STATE",
+    "WALLET_STATE",
   ]);
 
   // Preserve action results in state
-  refreshedState.data.actionResults = actionResults;
+  refreshedState.data.actionResults = actionResults as ActionResult[];
 
   // Merge any custom data from current state that shouldn't be lost
   if (currentState.data?.actionPlan) {
@@ -51,9 +51,9 @@ export async function refreshStateAfterAction(
 export function updateActionPlanStep(
   state: State,
   stepIndex: number,
-  status: 'completed' | 'failed' | 'pending',
+  status: "completed" | "failed" | "pending",
   result?: Record<string, unknown>,
-  error?: string
+  error?: string,
 ): State {
   if (!state.data?.actionPlan) {
     return state;
@@ -66,7 +66,7 @@ export function updateActionPlanStep(
     steps[stepIndex] = {
       ...steps[stepIndex],
       status,
-      result,
+      result: result as ActionResult | undefined,
       error,
     };
 
@@ -96,7 +96,7 @@ export function updateActionPlanStep(
 export function updateWorkingMemory(
   state: State,
   key: string,
-  value: Record<string, unknown>
+  value: Record<string, unknown>,
 ): State {
   const workingMemory = state.data?.workingMemory || {};
 
@@ -114,4 +114,3 @@ export function updateWorkingMemory(
     },
   };
 }
-

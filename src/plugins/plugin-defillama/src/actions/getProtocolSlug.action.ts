@@ -7,8 +7,16 @@ import {
   State,
   logger,
 } from "@elizaos/core";
-import { DefiLlamaService, type ProtocolLookupResult, type ProtocolSummary } from "../services/defillama.service";
-import { validateDefillamaService, getDefillamaService, extractActionParams } from "../utils/actionHelpers";
+import {
+  DefiLlamaService,
+  type ProtocolLookupResult,
+  type ProtocolSummary,
+} from "../services/defillama.service";
+import {
+  validateDefillamaService,
+  getDefillamaService,
+  extractActionParams,
+} from "../utils/actionHelpers";
 
 export const getProtocolSlugAction: Action = {
   name: "GET_PROTOCOL_SLUG",
@@ -26,13 +34,23 @@ export const getProtocolSlugAction: Action = {
   parameters: {
     protocols: {
       type: "string",
-      description: "Comma-separated list of DeFi protocol names or symbols to search for (e.g., 'Aave,Curve' or 'EIGEN,MORPHO')",
+      description:
+        "Comma-separated list of DeFi protocol names or symbols to search for (e.g., 'Aave,Curve' or 'EIGEN,MORPHO')",
       required: true,
     },
   },
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    return validateDefillamaService(runtime, "GET_PROTOCOL_SLUG", state, message);
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> => {
+    return validateDefillamaService(
+      runtime,
+      "GET_PROTOCOL_SLUG",
+      state,
+      message,
+    );
   },
 
   handler: async (
@@ -49,13 +67,17 @@ export const getProtocolSlugAction: Action = {
       }
 
       // Read parameters from state (extracted by multiStepDecisionTemplate)
-      const params = await extractActionParams<{ protocols?: string }>(runtime, message);
+      const params = await extractActionParams<{ protocols?: string }>(
+        runtime,
+        message,
+      );
 
       // Extract and validate protocols parameter (required)
       const protocolsRaw: string | undefined = params?.protocols?.trim();
 
       if (!protocolsRaw) {
-        const errorMsg = "Missing required parameter 'protocols'. Please specify which DeFi protocol(s) to search for (e.g., 'Aave,Curve' or 'EIGEN,MORPHO').";
+        const errorMsg =
+          "Missing required parameter 'protocols'. Please specify which DeFi protocol(s) to search for (e.g., 'Aave,Curve' or 'EIGEN,MORPHO').";
         logger.error(`[GET_PROTOCOL_SLUG] ${errorMsg}`);
         const errorResult: ActionResult = {
           text: errorMsg,
@@ -78,7 +100,8 @@ export const getProtocolSlugAction: Action = {
         .filter(Boolean);
 
       if (!names.length) {
-        const errorMsg = "No valid protocol names found. Please provide DeFi protocol names or symbols.";
+        const errorMsg =
+          "No valid protocol names found. Please provide DeFi protocol names or symbols.";
         logger.error(`[GET_PROTOCOL_SLUG] ${errorMsg}`);
         const errorResult: ActionResult = {
           text: errorMsg,
@@ -94,7 +117,9 @@ export const getProtocolSlugAction: Action = {
         return errorResult;
       }
 
-      logger.info(`[GET_PROTOCOL_SLUG] Searching for protocols: ${names.join(", ")}`);
+      logger.info(
+        `[GET_PROTOCOL_SLUG] Searching for protocols: ${names.join(", ")}`,
+      );
 
       // Store input parameters for return
       const inputParams = { protocols: protocolsRaw };
@@ -121,17 +146,19 @@ export const getProtocolSlugAction: Action = {
 
       for (const query of names) {
         const candidates = await svc.searchProtocolCandidates(query, 5);
-        const candidateInfos: ProtocolSlugInfo[] = candidates.map((protocol) => ({
-          id: protocol.id,
-          slug: protocol.slug,
-          name: protocol.name,
-          symbol: protocol.symbol,
-          category: protocol.category,
-          chains: protocol.chains,
-          url: protocol.url,
-          logo: protocol.logo,
-          tvl: protocol.tvl,
-        }));
+        const candidateInfos: ProtocolSlugInfo[] = candidates.map(
+          (protocol) => ({
+            id: protocol.id,
+            slug: protocol.slug,
+            name: protocol.name,
+            symbol: protocol.symbol,
+            category: protocol.category,
+            chains: protocol.chains,
+            url: protocol.url,
+            logo: protocol.logo,
+            tvl: protocol.tvl,
+          }),
+        );
 
         searchResults.push({
           query,
@@ -139,8 +166,13 @@ export const getProtocolSlugAction: Action = {
         });
       }
 
-      const totalCandidates = searchResults.reduce((sum, r) => sum + r.candidates.length, 0);
-      const queriesWithNoResults = searchResults.filter((r) => r.candidates.length === 0).length;
+      const totalCandidates = searchResults.reduce(
+        (sum, r) => sum + r.candidates.length,
+        0,
+      );
+      const queriesWithNoResults = searchResults.filter(
+        (r) => r.candidates.length === 0,
+      ).length;
 
       if (totalCandidates === 0) {
         const errorMsg = "No protocols matched any of the provided names";
@@ -160,9 +192,10 @@ export const getProtocolSlugAction: Action = {
         return errorResult;
       }
 
-      const messageText = queriesWithNoResults > 0
-        ? `Found ${totalCandidates} candidate(s) for ${searchResults.length} search(es); ${queriesWithNoResults} search(es) had no matches`
-        : `Found ${totalCandidates} candidate(s) for ${searchResults.length} search(es)`;
+      const messageText =
+        queriesWithNoResults > 0
+          ? `Found ${totalCandidates} candidate(s) for ${searchResults.length} search(es); ${queriesWithNoResults} search(es) had no matches`
+          : `Found ${totalCandidates} candidate(s) for ${searchResults.length} search(es)`;
 
       if (callback) {
         await callback({
@@ -176,27 +209,30 @@ export const getProtocolSlugAction: Action = {
       return {
         text: messageText,
         success: true,
-        data: searchResults,
-        values: searchResults,
+        data: { results: searchResults },
+        values: { results: searchResults },
         input: inputParams,
-      } as ActionResult & { input: typeof inputParams };
+      } as unknown as ActionResult & { input: typeof inputParams };
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.error(`[GET_PROTOCOL_SLUG] Action failed: ${msg}`);
-      
+
       // Try to capture input params even in failure
-      const params = await extractActionParams<{ protocols?: string }>(runtime, message);
+      const params = await extractActionParams<{ protocols?: string }>(
+        runtime,
+        message,
+      );
       const failureInputParams = {
         protocols: params?.protocols,
       };
-      
+
       const errorResult: ActionResult = {
         text: `Failed to search for protocols: ${msg}`,
         success: false,
         error: msg,
         input: failureInputParams,
       } as ActionResult & { input: typeof failureInputParams };
-      
+
       if (callback) {
         await callback({
           text: errorResult.text,
@@ -222,8 +258,24 @@ export const getProtocolSlugAction: Action = {
             {
               query: "Aave",
               candidates: [
-                { id: "2269", slug: "aave-v3", name: "Aave V3", symbol: "AAVE", category: "Lending", chains: ["Ethereum", "Arbitrum", "Polygon"], tvl: 37488847110 },
-                { id: "118", slug: "aave-v2", name: "Aave V2", symbol: "AAVE", category: "Lending", chains: ["Ethereum", "Polygon"], tvl: 250317261 },
+                {
+                  id: "2269",
+                  slug: "aave-v3",
+                  name: "Aave V3",
+                  symbol: "AAVE",
+                  category: "Lending",
+                  chains: ["Ethereum", "Arbitrum", "Polygon"],
+                  tvl: 37488847110,
+                },
+                {
+                  id: "118",
+                  slug: "aave-v2",
+                  name: "Aave V2",
+                  symbol: "AAVE",
+                  category: "Lending",
+                  chains: ["Ethereum", "Polygon"],
+                  tvl: 250317261,
+                },
               ],
             },
           ],
@@ -251,15 +303,47 @@ export const getProtocolSlugAction: Action = {
             {
               query: "Morpho",
               candidates: [
-                { id: "2432", slug: "morpho-v1", name: "Morpho V1", symbol: "MORPHO", category: "Lending", chains: ["Ethereum"], tvl: 8358689621 },
-                { id: "2711", slug: "morpho-v0-aavev3", name: "Morpho V0 AaveV3", symbol: "MORPHO", category: "Lending", chains: ["Ethereum"], tvl: 157908526 },
+                {
+                  id: "2432",
+                  slug: "morpho-v1",
+                  name: "Morpho V1",
+                  symbol: "MORPHO",
+                  category: "Lending",
+                  chains: ["Ethereum"],
+                  tvl: 8358689621,
+                },
+                {
+                  id: "2711",
+                  slug: "morpho-v0-aavev3",
+                  name: "Morpho V0 AaveV3",
+                  symbol: "MORPHO",
+                  category: "Lending",
+                  chains: ["Ethereum"],
+                  tvl: 157908526,
+                },
               ],
             },
             {
               query: "Curve",
               candidates: [
-                { id: "3", slug: "curve-dex", name: "Curve DEX", symbol: "CRV", category: "Dexs", chains: ["Ethereum"], tvl: 2297116219 },
-                { id: "3331", slug: "curve-llamalend", name: "Curve LlamaLend", symbol: "CRV", category: "Lending", chains: ["Ethereum"], tvl: 88837892 },
+                {
+                  id: "3",
+                  slug: "curve-dex",
+                  name: "Curve DEX",
+                  symbol: "CRV",
+                  category: "Dexs",
+                  chains: ["Ethereum"],
+                  tvl: 2297116219,
+                },
+                {
+                  id: "3331",
+                  slug: "curve-llamalend",
+                  name: "Curve LlamaLend",
+                  symbol: "CRV",
+                  category: "Lending",
+                  chains: ["Ethereum"],
+                  tvl: 88837892,
+                },
               ],
             },
           ],
@@ -287,8 +371,24 @@ export const getProtocolSlugAction: Action = {
             {
               query: "EigenLayer",
               candidates: [
-                { id: "2442", slug: "eigenlayer", name: "EigenLayer", symbol: "EIGEN", category: "Restaking", chains: ["Ethereum"], tvl: 16138339551 },
-                { id: "3282", slug: "eigenpie", name: "Eigenpie", symbol: "-", category: "Liquid Restaking", chains: ["Ethereum"], tvl: 11186759 },
+                {
+                  id: "2442",
+                  slug: "eigenlayer",
+                  name: "EigenLayer",
+                  symbol: "EIGEN",
+                  category: "Restaking",
+                  chains: ["Ethereum"],
+                  tvl: 16138339551,
+                },
+                {
+                  id: "3282",
+                  slug: "eigenpie",
+                  name: "Eigenpie",
+                  symbol: "-",
+                  category: "Liquid Restaking",
+                  chains: ["Ethereum"],
+                  tvl: 11186759,
+                },
               ],
             },
           ],
@@ -304,4 +404,3 @@ export const getProtocolSlugAction: Action = {
     ],
   ],
 };
-

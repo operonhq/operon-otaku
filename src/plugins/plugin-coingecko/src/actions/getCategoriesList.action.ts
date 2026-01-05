@@ -7,7 +7,10 @@ import {
   State,
   logger,
 } from "@elizaos/core";
-import { validateCoingeckoService, getCoingeckoService } from "../utils/actionHelpers";
+import {
+  validateCoingeckoService,
+  getCoingeckoService,
+} from "../utils/actionHelpers";
 
 export const getCategoriesListAction: Action = {
   name: "GET_CATEGORIES_LIST",
@@ -23,8 +26,17 @@ export const getCategoriesListAction: Action = {
   // No parameters needed
   parameters: {},
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    return validateCoingeckoService(runtime, "GET_CATEGORIES_LIST", state, message);
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> => {
+    return validateCoingeckoService(
+      runtime,
+      "GET_CATEGORIES_LIST",
+      state,
+      message,
+    );
   },
 
   handler: async (
@@ -59,21 +71,21 @@ export const getCategoriesListAction: Action = {
       return {
         text,
         success: true,
-        data: categoriesList,
-        values: categoriesList,
+        data: { categories: categoriesList },
+        values: { categories: categoriesList },
       };
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.error(`[GET_CATEGORIES_LIST] Action failed: ${msg}`);
-      
+
       const errorText = `Failed to fetch coin categories list: ${msg}`;
-      
+
       const errorResult: ActionResult = {
         text: errorText,
         success: false,
         error: msg,
       };
-      
+
       if (callback) {
         await callback({
           text: errorResult.text,
@@ -113,4 +125,3 @@ export const getCategoriesListAction: Action = {
     ],
   ],
 };
-

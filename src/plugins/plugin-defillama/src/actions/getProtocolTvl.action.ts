@@ -8,19 +8,22 @@ import {
   State,
   logger,
 } from "@elizaos/core";
-import { DefiLlamaService, type ProtocolLookupResult, type ProtocolSummary } from "../services/defillama.service";
-import { validateDefillamaService, getDefillamaService, extractActionParams } from "../utils/actionHelpers";
+import {
+  DefiLlamaService,
+  type ProtocolLookupResult,
+  type ProtocolSummary,
+} from "../services/defillama.service";
+import {
+  validateDefillamaService,
+  getDefillamaService,
+  extractActionParams,
+} from "../utils/actionHelpers";
 
 // Extend Action type to support parameter schemas for tool calling
 
 export const getProtocolTvlAction: Action = {
   name: "GET_PROTOCOL_TVL",
-  similes: [
-    "PROTOCOL_TVL",
-    "COMPARE_TVL",
-    "DEFILLAMA_PROTOCOL_TVL",
-    "TVL",
-  ],
+  similes: ["PROTOCOL_TVL", "COMPARE_TVL", "DEFILLAMA_PROTOCOL_TVL", "TVL"],
   description:
     "Use this action to fetch DeFi protocol TVL and change metrics by protocol name or symbol.",
 
@@ -28,13 +31,23 @@ export const getProtocolTvlAction: Action = {
   parameters: {
     protocols: {
       type: "string",
-      description: "Comma-separated list of DeFi protocol names or symbols (e.g., 'Aave,Curve' or 'EIGEN,MORPHO')",
+      description:
+        "Comma-separated list of DeFi protocol names or symbols (e.g., 'Aave,Curve' or 'EIGEN,MORPHO')",
       required: true,
     },
   },
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    return validateDefillamaService(runtime, "GET_PROTOCOL_TVL", state, message);
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> => {
+    return validateDefillamaService(
+      runtime,
+      "GET_PROTOCOL_TVL",
+      state,
+      message,
+    );
   },
 
   handler: async (
@@ -51,13 +64,17 @@ export const getProtocolTvlAction: Action = {
       }
 
       // Read parameters from state (extracted by multiStepDecisionTemplate)
-      const params = await extractActionParams<{ protocols?: string }>(runtime, message);
+      const params = await extractActionParams<{ protocols?: string }>(
+        runtime,
+        message,
+      );
 
       // Extract and validate protocols parameter (required)
       const protocolsRaw: string | undefined = params?.protocols?.trim();
 
       if (!protocolsRaw) {
-        const errorMsg = "Missing required parameter 'protocols'. Please specify which DeFi protocol(s) to fetch TVL for (e.g., 'Aave,Curve' or 'EIGEN,MORPHO').";
+        const errorMsg =
+          "Missing required parameter 'protocols'. Please specify which DeFi protocol(s) to fetch TVL for (e.g., 'Aave,Curve' or 'EIGEN,MORPHO').";
         logger.error(`[GET_PROTOCOL_TVL] ${errorMsg}`);
         const errorResult: ActionResult = {
           text: errorMsg,
@@ -80,7 +97,8 @@ export const getProtocolTvlAction: Action = {
         .filter(Boolean);
 
       if (!names.length) {
-        const errorMsg = "No valid protocol names found. Please provide DeFi protocol names or symbols.";
+        const errorMsg =
+          "No valid protocol names found. Please provide DeFi protocol names or symbols.";
         logger.error(`[GET_PROTOCOL_TVL] ${errorMsg}`);
         const errorResult: ActionResult = {
           text: errorMsg,
@@ -123,10 +141,11 @@ export const getProtocolTvlAction: Action = {
       }
 
       const successes = results.filter(
-        (result): result is ProtocolLookupResult & { data: ProtocolSummary } => Boolean(result.success && result.data)
+        (result): result is ProtocolLookupResult & { data: ProtocolSummary } =>
+          Boolean(result.success && result.data),
       );
       const failed = results.filter((result) => !result.success);
-      
+
       if (successes.length === 0) {
         const errorMsg = "No protocols matched the provided names";
         logger.error(`[GET_PROTOCOL_TVL] ${errorMsg}`);
@@ -145,9 +164,10 @@ export const getProtocolTvlAction: Action = {
         return errorResult;
       }
 
-      const messageText = failed.length > 0
-        ? `Fetched TVL for ${successes.length} protocol(s); ${failed.length} not matched`
-        : `Fetched TVL for ${successes.length} protocol(s)`;
+      const messageText =
+        failed.length > 0
+          ? `Fetched TVL for ${successes.length} protocol(s); ${failed.length} not matched`
+          : `Fetched TVL for ${successes.length} protocol(s)`;
 
       if (callback) {
         await callback({
@@ -161,27 +181,30 @@ export const getProtocolTvlAction: Action = {
       return {
         text: messageText,
         success: true,
-        data: results,
-        values: successes.map((r) => r.data),
+        data: { results },
+        values: { summaries: successes.map((r) => r.data) },
         input: inputParams,
-      } as ActionResult & { input: typeof inputParams };
+      } as unknown as ActionResult & { input: typeof inputParams };
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.error(`[GET_PROTOCOL_TVL] Action failed: ${msg}`);
-      
+
       // Try to capture input params even in failure
-      const params = await extractActionParams<{ protocols?: string }>(runtime, message);
+      const params = await extractActionParams<{ protocols?: string }>(
+        runtime,
+        message,
+      );
       const failureInputParams = {
         protocols: params?.protocols,
       };
-      
+
       const errorResult: ActionResult = {
         text: `Failed to fetch protocol TVL: ${msg}`,
         success: false,
         error: msg,
         input: failureInputParams,
       } as ActionResult & { input: typeof failureInputParams };
-      
+
       if (callback) {
         await callback({
           text: errorResult.text,
@@ -221,5 +244,3 @@ export const getProtocolTvlAction: Action = {
     ],
   ],
 };
-
-

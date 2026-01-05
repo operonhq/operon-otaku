@@ -59,7 +59,7 @@ export const getHistoricalPriceAction: Action = {
 
       // Read parameters from state
       const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-      const params = composedState?.data?.actionParams || {};
+      const params = (composedState?.data?.actionParams || {}) as Record<string, any>;
 
       // Extract and validate token parameter (required)
       const tokenRaw: string | undefined = params?.token?.trim();
@@ -176,7 +176,7 @@ This historical price data shows the token's value on the specified date. You ca
       
       // Try to capture input params even in failure
       const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-      const params = composedState?.data?.actionParams || {};
+      const params = (composedState?.data?.actionParams || {}) as Record<string, any>;
       const failureInputParams = {
         token: params?.token,
         date: params?.date,

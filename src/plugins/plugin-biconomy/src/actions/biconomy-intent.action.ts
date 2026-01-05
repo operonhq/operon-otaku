@@ -23,7 +23,22 @@ import {
   validateSlippage,
   slippageToDecimal,
 } from "../utils/slippage";
-import { validateBiconomyService, getValidatedViemClients } from "../utils/actionHelpers";
+import {
+  validateBiconomyService,
+  getValidatedViemClients,
+} from "../utils/actionHelpers";
+
+// Action parameters interface
+interface IntentParams {
+  inputToken?: string;
+  inputChain?: string;
+  inputAmount?: string;
+  targetTokens?: string;
+  targetChains?: string;
+  targetWeights?: string;
+  slippage?: number;
+  confirmHighSlippage?: boolean;
+}
 
 // CDP network mapping
 const CDP_NETWORK_MAP: Record<string, CdpNetwork> = {
@@ -38,14 +53,16 @@ const CDP_NETWORK_MAP: Record<string, CdpNetwork> = {
 const resolveCdpNetwork = (chainName: string): CdpNetwork => {
   const network = CDP_NETWORK_MAP[chainName.toLowerCase().trim()];
   if (!network) {
-    throw new Error(`CDP wallet does not support signing transactions on ${chainName}`);
+    throw new Error(
+      `CDP wallet does not support signing transactions on ${chainName}`,
+    );
   }
   return network;
 };
 
 /**
  * MEE Supertransaction Rebalance Action
- * 
+ *
  * Enables gasless portfolio rebalancing and multi-output operations using Biconomy's
  * MEE (Modular Execution Environment). Supports:
  * - Single token to multiple target tokens (portfolio split)
@@ -71,48 +88,61 @@ Supports: Ethereum, Base, Arbitrum, Polygon, Optimism, BSC, Scroll, Gnosis, and 
   parameters: {
     inputToken: {
       type: "string",
-      description: "Input token symbol or address (e.g., 'usdc', 'eth', '0x...')",
+      description:
+        "Input token symbol or address (e.g., 'usdc', 'eth', '0x...')",
       required: true,
     },
     inputChain: {
       type: "string",
-      description: "Input chain name (ethereum, base, arbitrum, polygon, optimism, bsc)",
+      description:
+        "Input chain name (ethereum, base, arbitrum, polygon, optimism, bsc)",
       required: true,
     },
     inputAmount: {
       type: "string",
-      description: "Amount to use in human-readable format (e.g., '1000' for 1000 USDC)",
+      description:
+        "Amount to use in human-readable format (e.g., '1000' for 1000 USDC)",
       required: true,
     },
     targetTokens: {
       type: "string",
-      description: "Target token symbols or addresses, comma-separated (e.g., 'weth,usdt')",
+      description:
+        "Target token symbols or addresses, comma-separated (e.g., 'weth,usdt')",
       required: true,
     },
     targetChains: {
       type: "string",
-      description: "Target chain names, comma-separated, matching targetTokens order (e.g., 'base,optimism')",
+      description:
+        "Target chain names, comma-separated, matching targetTokens order (e.g., 'base,optimism')",
       required: true,
     },
     targetWeights: {
       type: "string",
-      description: "Target weights as decimals summing to 1.0, comma-separated (e.g., '0.6,0.4' for 60%/40%)",
+      description:
+        "Target weights as decimals summing to 1.0, comma-separated (e.g., '0.6,0.4' for 60%/40%)",
       required: true,
     },
     slippage: {
       type: "number",
-      description: "Slippage tolerance as percentage (e.g., 1 for 1%, 5 for 5%). Default: 1. Max: 5% unless confirmed.",
+      description:
+        "Slippage tolerance as percentage (e.g., 1 for 1%, 5 for 5%). Default: 1. Max: 5% unless confirmed.",
       required: false,
     },
     confirmHighSlippage: {
       type: "boolean",
-      description: "Set to true to confirm slippage above 5%. Required if slippage > 5.",
+      description:
+        "Set to true to confirm slippage above 5%. Required if slippage > 5.",
       required: false,
     },
   },
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
-    return validateBiconomyService(runtime, "MEE_SUPERTRANSACTION_REBALANCE", state, message);
+    return validateBiconomyService(
+      runtime,
+      "MEE_SUPERTRANSACTION_REBALANCE",
+      state,
+      message,
+    );
   },
 
   handler: async (
@@ -120,44 +150,64 @@ Supports: Ethereum, Base, Arbitrum, Polygon, Optimism, BSC, Scroll, Gnosis, and 
     message: Memory,
     state?: State,
     options?: { [key: string]: unknown },
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     logger.info("[MEE_SUPERTX_REBALANCE] Handler invoked");
 
     try {
       // Get services
-      const biconomyService = runtime.getService<BiconomyService>(BiconomyService.serviceType);
+      const biconomyService = runtime.getService<BiconomyService>(
+        BiconomyService.serviceType,
+      );
       if (!biconomyService) {
         const errorMsg = "MEE service not initialized";
         logger.error(`[MEE_SUPERTX_REBALANCE] ${errorMsg}`);
         callback?.({ text: `❌ ${errorMsg}` });
-        return { text: `❌ ${errorMsg}`, success: false, error: "service_unavailable" };
+        return {
+          text: `❌ ${errorMsg}`,
+          success: false,
+          error: "service_unavailable",
+        };
       }
 
-      const cdpService = runtime.getService?.("CDP_SERVICE") as unknown as CdpService;
-      if (!cdpService || typeof cdpService.getViemClientsForAccount !== "function") {
+      const cdpService = runtime.getService?.(
+        "CDP_SERVICE",
+      ) as unknown as CdpService;
+      if (
+        !cdpService ||
+        typeof cdpService.getViemClientsForAccount !== "function"
+      ) {
         const errorMsg = "CDP service not available";
         logger.error(`[MEE_SUPERTX_REBALANCE] ${errorMsg}`);
         callback?.({ text: `❌ ${errorMsg}` });
-        return { text: `❌ ${errorMsg}`, success: false, error: "service_unavailable" };
+        return {
+          text: `❌ ${errorMsg}`,
+          success: false,
+          error: "service_unavailable",
+        };
       }
 
       // Extract parameters from state
-      const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-      const params = composedState?.data?.actionParams || {};
+      const composedState = await runtime.composeState(
+        message,
+        ["ACTION_STATE"],
+        true,
+      );
+      const params = (composedState?.data?.actionParams || {}) as IntentParams;
 
       // Validate required parameters
-      const inputToken = params?.inputToken?.toLowerCase().trim();
-      const inputChain = params?.inputChain?.toLowerCase().trim();
-      const inputAmount = params?.inputAmount?.trim();
-      const targetTokens = params?.targetTokens?.toLowerCase().trim();
-      const targetChains = params?.targetChains?.toLowerCase().trim();
-      const targetWeights = params?.targetWeights?.trim();
-      const slippage = params?.slippage ?? DEFAULT_SLIPPAGE;
+      const inputToken = params.inputToken?.toLowerCase().trim();
+      const inputChain = params.inputChain?.toLowerCase().trim();
+      const inputAmount = params.inputAmount?.trim();
+      const targetTokens = params.targetTokens?.toLowerCase().trim();
+      const targetChains = params.targetChains?.toLowerCase().trim();
+      const targetWeights = params.targetWeights?.trim();
+      const slippage = params.slippage ?? DEFAULT_SLIPPAGE;
       // Ensure confirmHighSlippage is strictly boolean for safety
-      const confirmHighSlippage = typeof params?.confirmHighSlippage === "boolean" 
-        ? params.confirmHighSlippage 
-        : false;
+      const confirmHighSlippage =
+        typeof params.confirmHighSlippage === "boolean"
+          ? params.confirmHighSlippage
+          : false;
 
       // Input parameters object for response
       const inputParams = {
@@ -179,7 +229,7 @@ Supports: Ethereum, Base, Arbitrum, Polygon, Optimism, BSC, Scroll, Gnosis, and 
         inputParams,
         "MEE_SUPERTX_REBALANCE",
         callback,
-        state
+        state,
       );
       if (!slippageValidation.valid) {
         return slippageValidation.errorResult!;
@@ -187,14 +237,21 @@ Supports: Ethereum, Base, Arbitrum, Polygon, Optimism, BSC, Scroll, Gnosis, and 
 
       // Validation
       if (!inputToken || !inputChain || !inputAmount) {
-        const errorMsg = "Missing required input parameters (inputToken, inputChain, inputAmount)";
+        const errorMsg =
+          "Missing required input parameters (inputToken, inputChain, inputAmount)";
         callback?.({ text: `❌ ${errorMsg}` });
-        return { text: `❌ ${errorMsg}`, success: false, error: "missing_parameters", input: inputParams } as ActionResult & { input: typeof inputParams };
+        return {
+          text: `❌ ${errorMsg}`,
+          success: false,
+          error: "missing_parameters",
+          input: inputParams,
+        } as ActionResult & { input: typeof inputParams };
       }
 
       const inputAmountFloat = Number(inputAmount);
       if (!Number.isFinite(inputAmountFloat) || inputAmountFloat <= 0) {
-        const errorMsg = "inputAmount must be a positive number (e.g., '1000').";
+        const errorMsg =
+          "inputAmount must be a positive number (e.g., '1000').";
         callback?.({ text: `❌ ${errorMsg}` });
         return {
           text: `❌ ${errorMsg}`,
@@ -205,20 +262,34 @@ Supports: Ethereum, Base, Arbitrum, Polygon, Optimism, BSC, Scroll, Gnosis, and 
       }
 
       if (!targetTokens || !targetChains || !targetWeights) {
-        const errorMsg = "Missing required target parameters (targetTokens, targetChains, targetWeights)";
+        const errorMsg =
+          "Missing required target parameters (targetTokens, targetChains, targetWeights)";
         callback?.({ text: `❌ ${errorMsg}` });
-        return { text: `❌ ${errorMsg}`, success: false, error: "missing_parameters", input: inputParams } as ActionResult & { input: typeof inputParams };
+        return {
+          text: `❌ ${errorMsg}`,
+          success: false,
+          error: "missing_parameters",
+          input: inputParams,
+        } as ActionResult & { input: typeof inputParams };
       }
 
       // Parse target arrays
       const tokens = targetTokens.split(",").map((t: string) => t.trim());
       const chains = targetChains.split(",").map((c: string) => c.trim());
-      const weights = targetWeights.split(",").map((w: string) => parseFloat(w.trim()));
+      const weights = targetWeights
+        .split(",")
+        .map((w: string) => parseFloat(w.trim()));
 
       if (tokens.length !== chains.length || tokens.length !== weights.length) {
-        const errorMsg = "Target arrays must have the same length (tokens, chains, weights)";
+        const errorMsg =
+          "Target arrays must have the same length (tokens, chains, weights)";
         callback?.({ text: `❌ ${errorMsg}` });
-        return { text: `❌ ${errorMsg}`, success: false, error: "invalid_parameters", input: inputParams } as ActionResult & { input: typeof inputParams };
+        return {
+          text: `❌ ${errorMsg}`,
+          success: false,
+          error: "invalid_parameters",
+          input: inputParams,
+        } as ActionResult & { input: typeof inputParams };
       }
 
       // Validate weights sum to 1.0
@@ -226,7 +297,12 @@ Supports: Ethereum, Base, Arbitrum, Polygon, Optimism, BSC, Scroll, Gnosis, and 
       if (Math.abs(weightSum - 1.0) > 0.001) {
         const errorMsg = `Target weights must sum to 1.0 (got ${weightSum.toFixed(3)})`;
         callback?.({ text: `❌ ${errorMsg}` });
-        return { text: `❌ ${errorMsg}`, success: false, error: "invalid_weights", input: inputParams } as ActionResult & { input: typeof inputParams };
+        return {
+          text: `❌ ${errorMsg}`,
+          success: false,
+          error: "invalid_weights",
+          input: inputParams,
+        } as ActionResult & { input: typeof inputParams };
       }
 
       // Resolve chain IDs
@@ -234,30 +310,56 @@ Supports: Ethereum, Base, Arbitrum, Polygon, Optimism, BSC, Scroll, Gnosis, and 
       if (!inputChainId) {
         const errorMsg = `Unsupported input chain: ${inputChain}`;
         callback?.({ text: `❌ ${errorMsg}` });
-        return { text: `❌ ${errorMsg}`, success: false, error: "unsupported_chain", input: inputParams } as ActionResult & { input: typeof inputParams };
+        return {
+          text: `❌ ${errorMsg}`,
+          success: false,
+          error: "unsupported_chain",
+          input: inputParams,
+        } as ActionResult & { input: typeof inputParams };
       }
 
-      const targetChainIds = chains.map((c: string) => biconomyService.resolveChainId(c));
+      const targetChainIds = chains.map((c: string) =>
+        biconomyService.resolveChainId(c),
+      );
       for (let i = 0; i < targetChainIds.length; i++) {
         if (!targetChainIds[i]) {
           const errorMsg = `Unsupported target chain: ${chains[i]}`;
           callback?.({ text: `❌ ${errorMsg}` });
-          return { text: `❌ ${errorMsg}`, success: false, error: "unsupported_chain", input: inputParams } as ActionResult & { input: typeof inputParams };
+          return {
+            text: `❌ ${errorMsg}`,
+            success: false,
+            error: "unsupported_chain",
+            input: inputParams,
+          } as ActionResult & { input: typeof inputParams };
         }
       }
 
       // Get user wallet
-      const wallet = await getEntityWallet(runtime as any, message, "MEE_SUPERTX_REBALANCE", callback);
+      const wallet = await getEntityWallet(
+        runtime as any,
+        message,
+        "MEE_SUPERTX_REBALANCE",
+        callback,
+      );
       if (wallet.success === false) {
-        logger.warn("[MEE_SUPERTX_REBALANCE] Entity wallet verification failed");
-        return { ...wallet.result, input: inputParams } as ActionResult & { input: typeof inputParams };
+        logger.warn(
+          "[MEE_SUPERTX_REBALANCE] Entity wallet verification failed",
+        );
+        return { ...wallet.result, input: inputParams } as ActionResult & {
+          input: typeof inputParams;
+        };
       }
 
       const accountName = wallet.metadata?.accountName as string;
       if (!accountName) {
         const errorMsg = "Could not resolve user wallet";
         callback?.({ text: `❌ ${errorMsg}` });
-        return { text: `❌ ${errorMsg}`, success: false, error: "missing_wallet", input: inputParams } as ActionResult & { input: typeof inputParams };
+        return {
+          text: `❌ ${errorMsg}`,
+          success: false,
+          error: "missing_wallet",
+          input: inputParams,
+        } as ActionResult & { input: typeof inputParams };
       }
 
       // Get viem clients and validate CDP account matches entity wallet
@@ -269,24 +371,38 @@ Supports: Ethereum, Base, Arbitrum, Polygon, Optimism, BSC, Scroll, Gnosis, and 
         wallet,
         "MEE_SUPERTX_REBALANCE",
         inputParams,
-        callback
+        callback,
       );
       if (!viemResult.success) {
         return viemResult.error;
       }
-      const { userAddress, cdpAccount, walletClient, publicClient } = viemResult;
+      const { userAddress, cdpAccount, walletClient, publicClient } =
+        viemResult;
 
-      const preferredFeeTokenResult = await tryGetBaseUsdcFeeToken(cdpService, accountName);
+      const preferredFeeTokenResult = await tryGetBaseUsdcFeeToken(
+        cdpService,
+        accountName,
+      );
       if (preferredFeeTokenResult?.usedBaseUsdc) {
-        callback?.({ text: "🪙 Using Base USDC to pay Biconomy orchestration fees" });
+        callback?.({
+          text: "🪙 Using Base USDC to pay Biconomy orchestration fees",
+        });
       }
 
       // Resolve token addresses using CoinGecko (same as CDP/Relay)
-      const inputTokenAddress = await resolveTokenToAddress(inputToken, inputChain);
+      const inputTokenAddress = await resolveTokenToAddress(
+        inputToken,
+        inputChain,
+      );
       if (!inputTokenAddress) {
         const errorMsg = `Cannot resolve input token: ${inputToken} on ${inputChain}`;
         callback?.({ text: `❌ ${errorMsg}` });
-        return { text: `❌ ${errorMsg}`, success: false, error: "token_resolution_failed", input: inputParams } as ActionResult & { input: typeof inputParams };
+        return {
+          text: `❌ ${errorMsg}`,
+          success: false,
+          error: "token_resolution_failed",
+          input: inputParams,
+        } as ActionResult & { input: typeof inputParams };
       }
 
       const targetTokenAddresses: string[] = [];
@@ -295,7 +411,12 @@ Supports: Ethereum, Base, Arbitrum, Polygon, Optimism, BSC, Scroll, Gnosis, and 
         if (!address) {
           const errorMsg = `Cannot resolve target token: ${tokens[i]} on ${chains[i]}`;
           callback?.({ text: `❌ ${errorMsg}` });
-          return { text: `❌ ${errorMsg}`, success: false, error: "token_resolution_failed", input: inputParams } as ActionResult & { input: typeof inputParams };
+          return {
+            text: `❌ ${errorMsg}`,
+            success: false,
+            error: "token_resolution_failed",
+            input: inputParams,
+          } as ActionResult & { input: typeof inputParams };
         }
         targetTokenAddresses.push(address);
       }
@@ -334,23 +455,29 @@ Supports: Ethereum, Base, Arbitrum, Polygon, Optimism, BSC, Scroll, Gnosis, and 
 
       // Build compose flow for rebalancing
       const rebalanceFlow = biconomyService.buildMultiIntentFlow(
-        [{ chainId: inputChainId, tokenAddress: inputTokenAddress, amount: effectiveAmountInWei.toString() }],
-        targetChainIds.map((chainId: number | undefined, i: number) => ({
+        [
+          {
+            chainId: inputChainId,
+            tokenAddress: inputTokenAddress,
+            amount: effectiveAmountInWei.toString(),
+          },
+        ],
+        targetChainIds.map((chainId, i: number) => ({
           chainId: chainId!,
           tokenAddress: targetTokenAddresses[i],
           weight: weights[i],
         })),
-        slippageToDecimal(slippage)
+        slippageToDecimal(slippage),
       );
 
       // Build withdrawal instructions for each target token to transfer back to EOA
       // Without these, tokens remain in the Biconomy Nexus/Smart Account
-      const withdrawalFlows = targetChainIds.map((chainId: number | undefined, i: number) =>
+      const withdrawalFlows = targetChainIds.map((chainId, i: number) =>
         biconomyService.buildWithdrawalInstruction(
           targetTokenAddresses[i],
           chainId!,
-          userAddress
-        )
+          userAddress,
+        ),
       );
 
       // Build quote request - use classic EOA mode with funding token provided
@@ -383,16 +510,19 @@ Supports: Ethereum, Base, Arbitrum, Polygon, Optimism, BSC, Scroll, Gnosis, and 
         walletClient,
         { address: userAddress },
         publicClient,
-        (status) => callback?.({ text: status })
+        (status) => callback?.({ text: status }),
       );
 
       if (result.success && result.supertxHash) {
         const explorerUrl = biconomyService.getExplorerUrl(result.supertxHash);
-        
+
         // Build target description
-        const targetDesc = tokens.map((t: string, i: number) => 
-          `${(weights[i] * 100).toFixed(0)}% ${t.toUpperCase()} on ${chains[i]}`
-        ).join(", ");
+        const targetDesc = tokens
+          .map(
+            (t: string, i: number) =>
+              `${(weights[i] * 100).toFixed(0)}% ${t.toUpperCase()} on ${chains[i]}`,
+          )
+          .join(", ");
 
         const gasTokenDescription = preferredFeeTokenResult?.usedBaseUsdc
           ? "Base USDC"
@@ -482,4 +612,3 @@ Supports: Ethereum, Base, Arbitrum, Polygon, Optimism, BSC, Scroll, Gnosis, and 
 };
 
 export default meeSupertransactionRebalanceAction;
-

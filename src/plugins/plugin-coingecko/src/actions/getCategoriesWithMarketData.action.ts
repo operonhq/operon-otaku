@@ -7,7 +7,10 @@ import {
   State,
   logger,
 } from "@elizaos/core";
-import { validateCoingeckoService, getCoingeckoService } from "../utils/actionHelpers";
+import {
+  validateCoingeckoService,
+  getCoingeckoService,
+} from "../utils/actionHelpers";
 
 export const getCategoriesWithMarketDataAction: Action = {
   name: "GET_CATEGORIES_WITH_MARKET_DATA",
@@ -24,13 +27,23 @@ export const getCategoriesWithMarketDataAction: Action = {
   parameters: {
     order: {
       type: "string",
-      description: "Sort order for categories. Options: 'market_cap_desc' (default), 'market_cap_asc', 'name_desc', 'name_asc', 'market_cap_change_24h_desc', 'market_cap_change_24h_asc'",
+      description:
+        "Sort order for categories. Options: 'market_cap_desc' (default), 'market_cap_asc', 'name_desc', 'name_asc', 'market_cap_change_24h_desc', 'market_cap_change_24h_asc'",
       required: false,
     },
   },
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    return validateCoingeckoService(runtime, "GET_CATEGORIES_WITH_MARKET_DATA", state, message);
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> => {
+    return validateCoingeckoService(
+      runtime,
+      "GET_CATEGORIES_WITH_MARKET_DATA",
+      state,
+      message,
+    );
   },
 
   handler: async (
@@ -47,27 +60,36 @@ export const getCategoriesWithMarketDataAction: Action = {
       }
 
       // Read parameters from state (extracted by multiStepDecisionTemplate)
-      const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-      const params = composedState?.data?.actionParams || {};
+      const composedState = await runtime.composeState(
+        message,
+        ["ACTION_STATE"],
+        true,
+      );
+      const params = (composedState?.data?.actionParams || {}) as Record<
+        string,
+        any
+      >;
 
       // Extract and validate order parameter
       const validOrders = [
-        'market_cap_desc',
-        'market_cap_asc',
-        'name_desc',
-        'name_asc',
-        'market_cap_change_24h_desc',
-        'market_cap_change_24h_asc'
+        "market_cap_desc",
+        "market_cap_asc",
+        "name_desc",
+        "name_asc",
+        "market_cap_change_24h_desc",
+        "market_cap_change_24h_asc",
       ] as const;
-      
-      type OrderType = typeof validOrders[number];
-      
-      const orderRaw = params?.order?.trim().toLowerCase() || 'market_cap_desc';
-      const order: OrderType = validOrders.includes(orderRaw as OrderType) 
-        ? (orderRaw as OrderType)
-        : 'market_cap_desc';
 
-      logger.info(`[GET_CATEGORIES_WITH_MARKET_DATA] Fetching categories with order: ${order}`);
+      type OrderType = (typeof validOrders)[number];
+
+      const orderRaw = params?.order?.trim().toLowerCase() || "market_cap_desc";
+      const order: OrderType = validOrders.includes(orderRaw as OrderType)
+        ? (orderRaw as OrderType)
+        : "market_cap_desc";
+
+      logger.info(
+        `[GET_CATEGORIES_WITH_MARKET_DATA] Fetching categories with order: ${order}`,
+      );
 
       // Store input parameters for return
       const inputParams = { order };
@@ -89,30 +111,37 @@ export const getCategoriesWithMarketDataAction: Action = {
       return {
         text,
         success: true,
-        data: categoriesData,
-        values: categoriesData,
+        data: { categories: categoriesData },
+        values: { categories: categoriesData },
         input: inputParams,
-      } as ActionResult & { input: typeof inputParams };
+      } as unknown as ActionResult & { input: typeof inputParams };
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.error(`[GET_CATEGORIES_WITH_MARKET_DATA] Action failed: ${msg}`);
-      
+
       // Try to capture input params even in failure
-      const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-      const params = composedState?.data?.actionParams || {};
+      const composedState = await runtime.composeState(
+        message,
+        ["ACTION_STATE"],
+        true,
+      );
+      const params = (composedState?.data?.actionParams || {}) as Record<
+        string,
+        any
+      >;
       const failureInputParams = {
-        order: params?.order || 'market_cap_desc',
+        order: params?.order || "market_cap_desc",
       };
-      
+
       const errorText = `Failed to fetch categories with market data: ${msg}`;
-      
+
       const errorResult: ActionResult = {
         text: errorText,
         success: false,
         error: msg,
         input: failureInputParams,
       } as ActionResult & { input: typeof failureInputParams };
-      
+
       if (callback) {
         await callback({
           text: errorResult.text,
@@ -165,4 +194,3 @@ export const getCategoriesWithMarketDataAction: Action = {
     ],
   ],
 };
-

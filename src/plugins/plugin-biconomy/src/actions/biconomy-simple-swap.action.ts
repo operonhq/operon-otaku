@@ -23,7 +23,21 @@ import {
   resolveTokenToAddress,
   getTokenDecimals,
 } from "../../../plugin-relay/src/utils/token-resolver";
-import { validateBiconomyService, getValidatedViemClients } from "../utils/actionHelpers";
+import {
+  validateBiconomyService,
+  getValidatedViemClients,
+} from "../utils/actionHelpers";
+
+// Action parameters interface
+interface SimpleSwapParams {
+  srcToken?: string;
+  srcChain?: string;
+  dstToken?: string;
+  dstChain?: string;
+  amount?: string;
+  slippage?: number;
+  confirmHighSlippage?: boolean;
+}
 
 // CDP network mapping
 const CDP_NETWORK_MAP: Record<string, CdpNetwork> = {
@@ -38,7 +52,9 @@ const CDP_NETWORK_MAP: Record<string, CdpNetwork> = {
 const resolveCdpNetwork = (chainName: string): CdpNetwork => {
   const network = CDP_NETWORK_MAP[chainName.toLowerCase().trim()];
   if (!network) {
-    throw new Error(`CDP wallet does not support signing transactions on ${chainName}`);
+    throw new Error(
+      `CDP wallet does not support signing transactions on ${chainName}`,
+    );
   }
   return network;
 };
@@ -99,12 +115,14 @@ Native gas tokens: ETH on Base/Ethereum/Arbitrum/Optimism, POL on Polygon. Treat
     },
     slippage: {
       type: "number",
-      description: "Slippage tolerance as percentage (e.g., 1 for 1%, 5 for 5%). Default: 1. Max: 5% unless confirmed.",
+      description:
+        "Slippage tolerance as percentage (e.g., 1 for 1%, 5 for 5%). Default: 1. Max: 5% unless confirmed.",
       required: false,
     },
     confirmHighSlippage: {
       type: "boolean",
-      description: "Set to true to confirm slippage above 5%. Required if slippage > 5.",
+      description:
+        "Set to true to confirm slippage above 5%. Required if slippage > 5.",
       required: false,
     },
   },
@@ -118,14 +136,14 @@ Native gas tokens: ETH on Base/Ethereum/Arbitrum/Optimism, POL on Polygon. Treat
     message: Memory,
     state?: State,
     options?: { [key: string]: unknown },
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     logger.info("[MEE_FUSION_SWAP] Handler invoked");
 
     try {
       // Get services
       const biconomyService = runtime.getService<BiconomyService>(
-        BiconomyService.serviceType
+        BiconomyService.serviceType,
       );
       if (!biconomyService) {
         const errorMsg = "MEE service not initialized";
@@ -138,7 +156,9 @@ Native gas tokens: ETH on Base/Ethereum/Arbitrum/Optimism, POL on Polygon. Treat
         };
       }
 
-      const cdpService = runtime.getService?.("CDP_SERVICE") as unknown as CdpService;
+      const cdpService = runtime.getService?.(
+        "CDP_SERVICE",
+      ) as unknown as CdpService;
       if (
         !cdpService ||
         typeof cdpService.getViemClientsForAccount !== "function"
@@ -157,21 +177,23 @@ Native gas tokens: ETH on Base/Ethereum/Arbitrum/Optimism, POL on Polygon. Treat
       const composedState = await runtime.composeState(
         message,
         ["ACTION_STATE"],
-        true
+        true,
       );
-      const params = composedState?.data?.actionParams || {};
+      const params = (composedState?.data?.actionParams ||
+        {}) as SimpleSwapParams;
 
       // Validate required parameters
-      const srcToken = params?.srcToken?.toLowerCase().trim();
-      const srcChain = params?.srcChain?.toLowerCase().trim();
-      const dstToken = params?.dstToken?.toLowerCase().trim();
-      const dstChain = params?.dstChain?.toLowerCase().trim();
-      const amount = params?.amount?.trim();
-      const slippage = params?.slippage ?? DEFAULT_SLIPPAGE;
+      const srcToken = params.srcToken?.toLowerCase().trim();
+      const srcChain = params.srcChain?.toLowerCase().trim();
+      const dstToken = params.dstToken?.toLowerCase().trim();
+      const dstChain = params.dstChain?.toLowerCase().trim();
+      const amount = params.amount?.trim();
+      const slippage = params.slippage ?? DEFAULT_SLIPPAGE;
       // Ensure confirmHighSlippage is strictly boolean for safety
-      const confirmHighSlippage = typeof params?.confirmHighSlippage === "boolean" 
-        ? params.confirmHighSlippage 
-        : false;
+      const confirmHighSlippage =
+        typeof params.confirmHighSlippage === "boolean"
+          ? params.confirmHighSlippage
+          : false;
 
       // Input parameters object for response
       const inputParams = {
@@ -192,7 +214,7 @@ Native gas tokens: ETH on Base/Ethereum/Arbitrum/Optimism, POL on Polygon. Treat
         inputParams,
         "MEE_FUSION_SWAP",
         callback,
-        state
+        state,
       );
       if (!slippageValidation.valid) {
         return slippageValidation.errorResult!;
@@ -310,11 +332,13 @@ Native gas tokens: ETH on Base/Ethereum/Arbitrum/Optimism, POL on Polygon. Treat
         runtime as any,
         message,
         "MEE_FUSION_SWAP",
-        callback
+        callback,
       );
       if (wallet.success === false) {
         logger.warn("[MEE_FUSION_SWAP] Entity wallet verification failed");
-        return { ...wallet.result, input: inputParams } as ActionResult & { input: typeof inputParams };
+        return { ...wallet.result, input: inputParams } as ActionResult & {
+          input: typeof inputParams;
+        };
       }
 
       const accountName = wallet.metadata?.accountName as string;
@@ -338,16 +362,22 @@ Native gas tokens: ETH on Base/Ethereum/Arbitrum/Optimism, POL on Polygon. Treat
         wallet,
         "MEE_FUSION_SWAP",
         inputParams,
-        callback
+        callback,
       );
       if (!viemResult.success) {
         return viemResult.error;
       }
-      const { userAddress, cdpAccount, walletClient, publicClient } = viemResult;
+      const { userAddress, cdpAccount, walletClient, publicClient } =
+        viemResult;
 
-      const preferredFeeTokenResult = await tryGetBaseUsdcFeeToken(cdpService, accountName);
+      const preferredFeeTokenResult = await tryGetBaseUsdcFeeToken(
+        cdpService,
+        accountName,
+      );
       if (preferredFeeTokenResult?.usedBaseUsdc) {
-        callback?.({ text: "🪙 Using Base USDC to pay Biconomy orchestration fees" });
+        callback?.({
+          text: "🪙 Using Base USDC to pay Biconomy orchestration fees",
+        });
       }
 
       // Resolve token addresses using CoinGecko (same as CDP/Relay)
@@ -414,7 +444,7 @@ Native gas tokens: ETH on Base/Ethereum/Arbitrum/Optimism, POL on Polygon. Treat
         srcTokenAddress,
         dstTokenAddress,
         swapAmountInWei.toString(),
-        slippageToDecimal(slippage)
+        slippageToDecimal(slippage),
       );
 
       // Build withdrawal instruction to transfer output tokens back to EOA
@@ -422,7 +452,7 @@ Native gas tokens: ETH on Base/Ethereum/Arbitrum/Optimism, POL on Polygon. Treat
       const withdrawalFlow = biconomyService.buildWithdrawalInstruction(
         dstTokenAddress,
         dstChainId,
-        userAddress
+        userAddress,
       );
 
       // Build quote request - use classic EOA mode with funding token provided
@@ -455,7 +485,7 @@ Native gas tokens: ETH on Base/Ethereum/Arbitrum/Optimism, POL on Polygon. Treat
         walletClient,
         { address: userAddress },
         publicClient,
-        (status) => callback?.({ text: status })
+        (status) => callback?.({ text: status }),
       );
 
       if (result.success && result.supertxHash) {
@@ -521,17 +551,18 @@ Native gas tokens: ETH on Base/Ethereum/Arbitrum/Optimism, POL on Polygon. Treat
         const composedState = await runtime.composeState(
           message,
           ["ACTION_STATE"],
-          true
+          true,
         );
-        const params = composedState?.data?.actionParams || {};
+        const params = (composedState?.data?.actionParams ||
+          {}) as SimpleSwapParams;
         failureInputParams = {
-          srcToken: params?.srcToken,
-          srcChain: params?.srcChain,
-          dstToken: params?.dstToken,
-          dstChain: params?.dstChain,
-          amount: params?.amount,
-          slippage: params?.slippage,
-          confirmHighSlippage: params?.confirmHighSlippage,
+          srcToken: params.srcToken,
+          srcChain: params.srcChain,
+          dstToken: params.dstToken,
+          dstChain: params.dstChain,
+          amount: params.amount,
+          slippage: params.slippage,
+          confirmHighSlippage: params.confirmHighSlippage,
         };
       } catch (e) {
         // If we can't get params, just use empty object
@@ -597,4 +628,3 @@ Native gas tokens: ETH on Base/Ethereum/Arbitrum/Optimism, POL on Polygon. Treat
 };
 
 export default meeFusionSwapAction;
-

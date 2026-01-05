@@ -166,7 +166,7 @@ export const relayQuoteAction: Action = {
           let earlyFailureInput = {};
           try {
             const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-            const params = composedState?.data?.actionParams || {};
+            const params = (composedState?.data?.actionParams || {}) as Record<string, any>;
             earlyFailureInput = {
               originChain: params?.originChain,
               destinationChain: params?.destinationChain,
@@ -195,7 +195,7 @@ export const relayQuoteAction: Action = {
 
         // Read parameters from state (extracted by multiStepDecisionTemplate)
         const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-        const params = composedState?.data?.actionParams || {};
+        const params = (composedState?.data?.actionParams || {}) as Record<string, any>;
 
         // Validate required parameters
         const originChain = params?.originChain?.toLowerCase().trim();
@@ -483,7 +483,7 @@ export const relayQuoteAction: Action = {
       let catchFailureInput = {};
       try {
         const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-        const params = composedState?.data?.actionParams || {};
+        const params = (composedState?.data?.actionParams || {}) as Record<string, any>;
         catchFailureInput = {
           originChain: params?.originChain,
           destinationChain: params?.destinationChain,

@@ -12,28 +12,31 @@ import { validateBiconomyService } from "../utils/actionHelpers";
 
 /**
  * MEE Supertransaction Status Action
- * 
+ *
  * Track the status of a MEE supertransaction using its hash.
  */
 export const meeSupertransactionStatusAction: Action = {
   name: "MEE_SUPERTRANSACTION_STATUS",
-  description: "Check the status of a MEE supertransaction using its supertx hash.",
-  similes: [
-    "MEE_STATUS",
-    "SUPERTX_STATUS",
-    "TRACK_SUPERTRANSACTION",
-  ],
+  description:
+    "Check the status of a MEE supertransaction using its supertx hash.",
+  similes: ["MEE_STATUS", "SUPERTX_STATUS", "TRACK_SUPERTRANSACTION"],
 
   parameters: {
     supertxHash: {
       type: "string",
-      description: "The Biconomy supertransaction hash to check (e.g., 'stx_0x...')",
+      description:
+        "The Biconomy supertransaction hash to check (e.g., 'stx_0x...')",
       required: true,
     },
   },
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
-    return validateBiconomyService(runtime, "MEE_SUPERTRANSACTION_STATUS", state, message);
+    return validateBiconomyService(
+      runtime,
+      "MEE_SUPERTRANSACTION_STATUS",
+      state,
+      message,
+    );
   },
 
   handler: async (
@@ -41,27 +44,43 @@ export const meeSupertransactionStatusAction: Action = {
     message: Memory,
     state?: State,
     options?: { [key: string]: unknown },
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     logger.info("[MEE_SUPERTX_STATUS] Handler invoked");
 
     try {
-      const biconomyService = runtime.getService<BiconomyService>(BiconomyService.serviceType);
+      const biconomyService = runtime.getService<BiconomyService>(
+        BiconomyService.serviceType,
+      );
       if (!biconomyService) {
         const errorMsg = "Biconomy service not initialized";
         callback?.({ text: `❌ ${errorMsg}` });
-        return { text: `❌ ${errorMsg}`, success: false, error: "service_unavailable" };
+        return {
+          text: `❌ ${errorMsg}`,
+          success: false,
+          error: "service_unavailable",
+        };
       }
 
       // Extract parameters
-      const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-      const params = composedState?.data?.actionParams || {};
-      const supertxHash = params?.supertxHash?.trim();
+      const composedState = await runtime.composeState(
+        message,
+        ["ACTION_STATE"],
+        true,
+      );
+      const params = (composedState?.data?.actionParams || {}) as {
+        supertxHash?: string;
+      };
+      const supertxHash = params.supertxHash?.trim();
 
       if (!supertxHash) {
         const errorMsg = "Missing required parameter: supertxHash";
         callback?.({ text: `❌ ${errorMsg}` });
-        return { text: `❌ ${errorMsg}`, success: false, error: "missing_parameters" };
+        return {
+          text: `❌ ${errorMsg}`,
+          success: false,
+          error: "missing_parameters",
+        };
       }
 
       callback?.({ text: `🔍 Checking status for ${supertxHash}...` });
@@ -70,10 +89,14 @@ export const meeSupertransactionStatusAction: Action = {
       const explorerUrl = biconomyService.getExplorerUrl(supertxHash);
 
       // Format status indicator
-      const statusIndicator = 
-        status.status === "success" ? "✅" : 
-        status.status === "pending" ? "⏳" : 
-        status.status === "failed" ? "❌" : "❓";
+      const statusIndicator =
+        status.status === "success"
+          ? "✅"
+          : status.status === "pending"
+            ? "⏳"
+            : status.status === "failed"
+              ? "❌"
+              : "❓";
 
       // Format transactions if available
       let txDetails = "";
@@ -138,4 +161,3 @@ ${statusIndicator} **Supertransaction Status: ${status.status.toUpperCase()}**
 };
 
 export default meeSupertransactionStatusAction;
-

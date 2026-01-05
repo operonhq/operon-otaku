@@ -54,7 +54,7 @@ export const getTrendingTokensAction: Action = {
 
       // Read parameters from state (extracted by multiStepDecisionTemplate)
       const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-      const params = composedState?.data?.actionParams || {};
+      const params = (composedState?.data?.actionParams || {}) as Record<string, any>;
 
       // Extract parameters with defaults
       const network: string = (params?.network?.trim() || "base").toLowerCase();
@@ -97,7 +97,7 @@ export const getTrendingTokensAction: Action = {
       
       // Try to capture input params even in failure
       const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-      const params = composedState?.data?.actionParams || {};
+      const params = (composedState?.data?.actionParams || {}) as Record<string, any>;
       const failureInputParams = {
         network: params?.network || "base",
         limit: params?.limit || 10,

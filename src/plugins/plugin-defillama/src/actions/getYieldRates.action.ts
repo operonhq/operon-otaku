@@ -9,7 +9,11 @@ import {
   logger,
 } from "@elizaos/core";
 import { DefiLlamaService } from "../services/defillama.service";
-import { validateDefillamaService, getDefillamaService, extractActionParams } from "../utils/actionHelpers";
+import {
+  validateDefillamaService,
+  getDefillamaService,
+  extractActionParams,
+} from "../utils/actionHelpers";
 
 export const getYieldRatesAction: Action = {
   name: "GET_YIELD_RATES",
@@ -28,7 +32,8 @@ export const getYieldRatesAction: Action = {
   parameters: {
     protocol: {
       type: "string",
-      description: "DeFi protocol name (e.g., 'Aave', 'Morpho', 'Compound'). Optional.",
+      description:
+        "DeFi protocol name (e.g., 'Aave', 'Morpho', 'Compound'). Optional.",
       required: false,
     },
     token: {
@@ -38,12 +43,17 @@ export const getYieldRatesAction: Action = {
     },
     chain: {
       type: "string",
-      description: "Blockchain name (e.g., 'Ethereum', 'Base', 'Arbitrum'). Optional.",
+      description:
+        "Blockchain name (e.g., 'Ethereum', 'Base', 'Arbitrum'). Optional.",
       required: false,
     },
   },
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> => {
     return validateDefillamaService(runtime, "GET_YIELD_RATES", state, message);
   },
 
@@ -61,7 +71,11 @@ export const getYieldRatesAction: Action = {
       }
 
       // Read parameters from state (extracted by multiStepDecisionTemplate)
-      const params = await extractActionParams<{ protocol?: string; token?: string; chain?: string }>(runtime, message);
+      const params = await extractActionParams<{
+        protocol?: string;
+        token?: string;
+        chain?: string;
+      }>(runtime, message);
 
       // Extract optional parameters
       const protocol = params?.protocol?.trim() || undefined;
@@ -73,11 +87,10 @@ export const getYieldRatesAction: Action = {
       if (protocol) searchCriteria.push(`protocol: ${protocol}`);
       if (token) searchCriteria.push(`token: ${token}`);
       if (chain) searchCriteria.push(`chain: ${chain}`);
-      
-      const searchDesc = searchCriteria.length > 0 
-        ? searchCriteria.join(", ") 
-        : "all yields";
-      
+
+      const searchDesc =
+        searchCriteria.length > 0 ? searchCriteria.join(", ") : "all yields";
+
       logger.info(`[GET_YIELD_RATES] Searching for yields: ${searchDesc}`);
 
       // Store input parameters for return
@@ -97,9 +110,9 @@ export const getYieldRatesAction: Action = {
         const errorResult: ActionResult = {
           text: errorMsg,
           success: true, // Not really an error, just no results
-          data: [],
+          data: { results: [] },
           input: inputParams,
-        } as ActionResult & { input: typeof inputParams };
+        } as unknown as ActionResult & { input: typeof inputParams };
         if (callback) {
           await callback({
             text: errorResult.text,
@@ -127,7 +140,7 @@ export const getYieldRatesAction: Action = {
         apyMean30d: pool.apyMean30d,
       }));
 
-      const messageText = `Found ${results.length} yield opportunit${results.length === 1 ? 'y' : 'ies'} for ${searchDesc}`;
+      const messageText = `Found ${results.length} yield opportunit${results.length === 1 ? "y" : "ies"} for ${searchDesc}`;
 
       if (callback) {
         await callback({
@@ -141,29 +154,33 @@ export const getYieldRatesAction: Action = {
       return {
         text: messageText,
         success: true,
-        data: formattedResults,
-        values: formattedResults, // For compatibility
+        data: { results: formattedResults },
+        values: { results: formattedResults }, // For compatibility
         input: inputParams,
-      } as ActionResult & { input: typeof inputParams };
+      } as unknown as ActionResult & { input: typeof inputParams };
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.error(`[GET_YIELD_RATES] Action failed: ${msg}`);
-      
+
       // Try to capture input params even in failure
-      const params = await extractActionParams<{ protocol?: string; token?: string; chain?: string }>(runtime, message);
+      const params = await extractActionParams<{
+        protocol?: string;
+        token?: string;
+        chain?: string;
+      }>(runtime, message);
       const failureInputParams = {
         protocol: params?.protocol,
         token: params?.token,
         chain: params?.chain,
       };
-      
+
       const errorResult: ActionResult = {
         text: `Failed to fetch yield rates: ${msg}`,
         success: false,
         error: msg,
         input: failureInputParams,
       } as ActionResult & { input: typeof failureInputParams };
-      
+
       if (callback) {
         await callback({
           text: errorResult.text,
@@ -242,4 +259,3 @@ export const getYieldRatesAction: Action = {
     ],
   ],
 };
-

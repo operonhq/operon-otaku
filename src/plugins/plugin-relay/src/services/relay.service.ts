@@ -5,7 +5,7 @@ import {
   createClient,
   getClient,
   MAINNET_RELAY_API,
-  TESTNET_RELAY_API
+  TESTNET_RELAY_API,
 } from "@relayprotocol/relay-sdk";
 import { type Address, type Chain, type WalletClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -18,7 +18,7 @@ import {
   optimism,
   polygon,
   scroll,
-  zora
+  zora,
 } from "viem/chains";
 import type {
   ExecuteCallRequest,
@@ -28,9 +28,12 @@ import type {
   RelayExecuteResult,
   RelayStatus,
   ResolvedBridgeRequest,
-  StatusRequest
+  StatusRequest,
 } from "../types";
-import { createMultiChainWallet, type MultiChainWallet } from "../utils/multichain-wallet";
+import {
+  createMultiChainWallet,
+  type MultiChainWallet,
+} from "../utils/multichain-wallet";
 
 export class RelayService extends Service {
   static serviceType = "cross_chain_bridge" as const;
@@ -61,7 +64,8 @@ export class RelayService extends Service {
   async initialize(runtime: IAgentRuntime): Promise<void> {
     this.isTestnet = runtime.getSetting("RELAY_ENABLE_TESTNET") === "true";
     this.apiUrl = this.isTestnet ? TESTNET_RELAY_API : MAINNET_RELAY_API;
-    this.apiKey = runtime.getSetting("RELAY_API_KEY");
+    const apiKeySetting = runtime.getSetting("RELAY_API_KEY");
+    this.apiKey = typeof apiKeySetting === "string" ? apiKeySetting : undefined;
 
     // Define supported chains
     const supportedChains: Chain[] = [
@@ -81,7 +85,9 @@ export class RelayService extends Service {
       createClient({
         baseApiUrl: this.apiUrl,
         source: "elizaos-agent",
-        chains: supportedChains.map((chain) => convertViemChainToRelayChain(chain)),
+        chains: supportedChains.map((chain) =>
+          convertViemChainToRelayChain(chain),
+        ),
         ...(this.apiKey ? { apiKey: this.apiKey } : {}),
       });
     } catch (error) {
@@ -143,7 +149,7 @@ export class RelayService extends Service {
   async executeBridge(
     request: ResolvedBridgeRequest,
     options: { walletClient: WalletClient },
-    onProgress?: (data: ProgressData) => void
+    onProgress?: (data: ProgressData) => void,
   ): Promise<string> {
     try {
       const client = getClient();
@@ -152,8 +158,14 @@ export class RelayService extends Service {
       }
 
       // Validate request
-      if (!request.user || !request.originChainId || !request.destinationChainId) {
-        throw new Error("Missing required fields: user, originChainId, destinationChainId");
+      if (
+        !request.user ||
+        !request.originChainId ||
+        !request.destinationChainId
+      ) {
+        throw new Error(
+          "Missing required fields: user, originChainId, destinationChainId",
+        );
       }
 
       if (!request.amount || BigInt(request.amount) <= 0n) {
@@ -173,7 +185,7 @@ export class RelayService extends Service {
         referrer: request.referrer,
       });
 
-      const wallet = options?.walletClient
+      const wallet = options?.walletClient;
       // Execute with the quote
       const result = await client.actions.execute({
         quote,
@@ -183,9 +195,12 @@ export class RelayService extends Service {
 
       // Extract request ID from the execution result
       // Log the full result structure for debugging
-      logger.debug(`Execute result structure: ${JSON.stringify(Object.keys(result || {}))}`);
-      
-      const requestId = (result as RelayExecuteResult)?.data?.request?.id ||
+      logger.debug(
+        `Execute result structure: ${JSON.stringify(Object.keys(result || {}))}`,
+      );
+
+      const requestId =
+        (result as RelayExecuteResult)?.data?.request?.id ||
         (result as RelayExecuteResult)?.requestId ||
         (result as any)?.id ||
         "pending";
@@ -205,17 +220,25 @@ export class RelayService extends Service {
   async executeCall(
     request: ExecuteCallRequest,
     options: { walletClient: WalletClient },
-    onProgress?: (data: ProgressData) => void
+    onProgress?: (data: ProgressData) => void,
   ): Promise<string> {
     try {
       const client = getClient();
       if (!client) {
-        throw new Error("Relay client not initialized. Please call initialize() first.");
+        throw new Error(
+          "Relay client not initialized. Please call initialize() first.",
+        );
       }
 
       // Validate request
-      if (!request.user || !request.originChainId || !request.destinationChainId) {
-        throw new Error("Missing required fields: user, originChainId, destinationChainId");
+      if (
+        !request.user ||
+        !request.originChainId ||
+        !request.destinationChainId
+      ) {
+        throw new Error(
+          "Missing required fields: user, originChainId, destinationChainId",
+        );
       }
 
       if (!request.txs || request.txs.length === 0) {
@@ -233,7 +256,7 @@ export class RelayService extends Service {
         tradeType: "EXACT_INPUT",
       });
 
-      const wallet = options?.walletClient
+      const wallet = options?.walletClient;
 
       // Execute the call with SDK
       const result = await client.actions.execute({
@@ -247,7 +270,8 @@ export class RelayService extends Service {
       });
 
       // Extract request ID from the execution result
-      const requestId: string = (result as import("../types").RelayExecuteResult)?.data?.request?.id ||
+      const requestId: string =
+        (result as import("../types").RelayExecuteResult)?.data?.request?.id ||
         (result as import("../types").RelayExecuteResult)?.requestId ||
         "pending";
 
@@ -266,7 +290,9 @@ export class RelayService extends Service {
     try {
       // Validate at least one identifier is provided
       if (!request.requestId && !request.txHash && !request.user) {
-        throw new Error("At least one of requestId, txHash, or user must be provided");
+        throw new Error(
+          "At least one of requestId, txHash, or user must be provided",
+        );
       }
 
       const params = new URLSearchParams();
@@ -274,16 +300,21 @@ export class RelayService extends Service {
       if (request.txHash) params.append("hash", request.txHash);
       if (request.user) params.append("user", request.user);
 
-      const response = await fetch(`${this.apiUrl}/requests/v2?${params.toString()}`, {
-        headers: {
-          "Content-Type": "application/json",
-          ...(this.apiKey && { "x-api-key": this.apiKey }),
+      const response = await fetch(
+        `${this.apiUrl}/requests/v2?${params.toString()}`,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...(this.apiKey && { "x-api-key": this.apiKey }),
+          },
         },
-      });
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Failed to get status: ${response.status} ${errorText}`);
+        throw new Error(
+          `Failed to get status: ${response.status} ${errorText}`,
+        );
       }
 
       const data: any = await response.json();
@@ -309,7 +340,9 @@ export class RelayService extends Service {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Failed to get chains: ${response.status} ${errorText}`);
+        throw new Error(
+          `Failed to get chains: ${response.status} ${errorText}`,
+        );
       }
 
       const data: any = await response.json();
@@ -330,16 +363,21 @@ export class RelayService extends Service {
         throw new Error("Invalid chainId provided");
       }
 
-      const response = await fetch(`${this.apiUrl}/currencies?chainId=${chainId}`, {
-        headers: {
-          "Content-Type": "application/json",
-          ...(this.apiKey && { "x-api-key": this.apiKey }),
+      const response = await fetch(
+        `${this.apiUrl}/currencies?chainId=${chainId}`,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...(this.apiKey && { "x-api-key": this.apiKey }),
+          },
         },
-      });
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Failed to get currencies: ${response.status} ${errorText}`);
+        throw new Error(
+          `Failed to get currencies: ${response.status} ${errorText}`,
+        );
       }
 
       const data: any = await response.json();
@@ -373,7 +411,9 @@ export class RelayService extends Service {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.warn(`Failed to index transaction: ${response.status} ${errorText}`);
+        console.warn(
+          `Failed to index transaction: ${response.status} ${errorText}`,
+        );
       }
     } catch (error: unknown) {
       // Don't throw, just log - indexing is optional

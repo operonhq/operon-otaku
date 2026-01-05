@@ -49,7 +49,7 @@ export const getNFTCollectionStatsAction: Action = {
 
       // Read parameters from state (extracted by multiStepDecisionTemplate)
       const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-      const params = composedState?.data?.actionParams || {};
+      const params = (composedState?.data?.actionParams || {}) as Record<string, any>;
 
       // Extract and validate collection parameter (required)
       const collectionRaw: string | undefined = params?.collection?.trim();
@@ -103,7 +103,7 @@ export const getNFTCollectionStatsAction: Action = {
       
       // Try to capture input params even in failure
       const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-      const params = composedState?.data?.actionParams || {};
+      const params = (composedState?.data?.actionParams || {}) as Record<string, any>;
       const failureInputParams = {
         collection: params?.collection,
       };

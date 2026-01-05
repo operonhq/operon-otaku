@@ -1,5 +1,10 @@
 import { IAgentRuntime, logger, Service } from "@elizaos/core";
-import { type WalletClient, type TypedDataDomain, type Account, type PublicClient } from "viem";
+import {
+  type WalletClient,
+  type TypedDataDomain,
+  type Account,
+  type PublicClient,
+} from "viem";
 import {
   type ComposeFlow,
   type ExecuteResponse,
@@ -8,7 +13,7 @@ import {
   type QuoteResponse,
   type SupertxStatus,
   BICONOMY_SUPPORTED_CHAINS,
-  CHAIN_ID_TO_NAME
+  CHAIN_ID_TO_NAME,
 } from "../types";
 
 /**
@@ -63,7 +68,9 @@ export class BiconomyService extends Service {
   }
 
   static async start(runtime: IAgentRuntime): Promise<BiconomyService> {
-    logger.info("[BICONOMY SERVICE] Starting Biconomy Supertransaction service");
+    logger.info(
+      "[BICONOMY SERVICE] Starting Biconomy Supertransaction service",
+    );
     const service = new BiconomyService(runtime);
     await service.initialize(runtime);
     return service;
@@ -74,9 +81,12 @@ export class BiconomyService extends Service {
   }
 
   async initialize(runtime: IAgentRuntime): Promise<void> {
-    this.apiKey = runtime.getSetting("BICONOMY_API_KEY");
+    const setting = runtime.getSetting("BICONOMY_API_KEY");
+    this.apiKey = typeof setting === "string" ? setting : undefined;
     if (!this.apiKey) {
-      logger.warn("[BICONOMY SERVICE] No BICONOMY_API_KEY found. Some features may be limited.");
+      logger.warn(
+        "[BICONOMY SERVICE] No BICONOMY_API_KEY found. Some features may be limited.",
+      );
     }
     logger.info("[BICONOMY SERVICE] Initialized successfully");
   }
@@ -87,23 +97,31 @@ export class BiconomyService extends Service {
   async getQuote(request: QuoteRequest): Promise<QuoteResponse> {
     // Log wallet/owner info and request params BEFORE making the quote request
     const ownerAddr = request.ownerAddress || "unknown";
-    const fundingInfo = request.fundingTokens?.map(ft => ({
-      token: ft.tokenAddress,
-      chainId: ft.chainId,
-      amount: ft.amount,
-    })) || [];
-    const flowsSummary = request.composeFlows?.map(flow => ({
-      type: flow.type,
-      data: flow.data,
-    })) || [];
+    const fundingInfo =
+      request.fundingTokens?.map((ft) => ({
+        token: ft.tokenAddress,
+        chainId: ft.chainId,
+        amount: ft.amount,
+      })) || [];
+    const flowsSummary =
+      request.composeFlows?.map((flow) => ({
+        type: flow.type,
+        data: flow.data,
+      })) || [];
 
     logger.info(`[BICONOMY SERVICE] ========== QUOTE REQUEST ==========`);
     logger.info(`[BICONOMY SERVICE] Owner/Wallet: ${ownerAddr}`);
     logger.info(`[BICONOMY SERVICE] Mode: ${request.mode}`);
-    logger.info(`[BICONOMY SERVICE] Funding tokens: ${JSON.stringify(fundingInfo)}`);
-    logger.info(`[BICONOMY SERVICE] Compose flows: ${JSON.stringify(flowsSummary)}`);
+    logger.info(
+      `[BICONOMY SERVICE] Funding tokens: ${JSON.stringify(fundingInfo)}`,
+    );
+    logger.info(
+      `[BICONOMY SERVICE] Compose flows: ${JSON.stringify(flowsSummary)}`,
+    );
     if (request.feeToken) {
-      logger.info(`[BICONOMY SERVICE] Fee token: ${JSON.stringify(request.feeToken)}`);
+      logger.info(
+        `[BICONOMY SERVICE] Fee token: ${JSON.stringify(request.feeToken)}`,
+      );
     }
 
     try {
@@ -115,7 +133,7 @@ export class BiconomyService extends Service {
         },
         body: JSON.stringify(request),
       })) as HttpResponse;
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         // Log rejection with full params
@@ -123,26 +141,36 @@ export class BiconomyService extends Service {
         logger.error(`[BICONOMY SERVICE] Owner/Wallet: ${ownerAddr}`);
         logger.error(`[BICONOMY SERVICE] Status: ${response.status}`);
         logger.error(`[BICONOMY SERVICE] Error: ${errorText}`);
-        logger.error(`[BICONOMY SERVICE] Full request params: ${JSON.stringify(request, null, 2)}`);
+        logger.error(
+          `[BICONOMY SERVICE] Full request params: ${JSON.stringify(request, null, 2)}`,
+        );
         logger.error(`[BICONOMY SERVICE] ===================================`);
 
-        throw new Error(`Quote request failed: ${response.status} ${errorText}`);
+        throw new Error(
+          `Quote request failed: ${response.status} ${errorText}`,
+        );
       }
 
       const quote = (await response.json()) as QuoteResponse;
-      
-      logger.info(`[BICONOMY SERVICE] Quote received - type: ${quote.quoteType}, payloads to sign: ${quote.payloadToSign.length}`);
-      logger.debug(`[BICONOMY SERVICE] Returned data: ${JSON.stringify(quote.returnedData)}`);
-      
+
+      logger.info(
+        `[BICONOMY SERVICE] Quote received - type: ${quote.quoteType}, payloads to sign: ${quote.payloadToSign.length}`,
+      );
+      logger.debug(
+        `[BICONOMY SERVICE] Returned data: ${JSON.stringify(quote.returnedData)}`,
+      );
+
       return quote;
     } catch (error) {
       const err = error as Error;
       // If not already logged (i.e., not from response.ok check), log here
-      if (!err.message.includes('Quote request failed:')) {
+      if (!err.message.includes("Quote request failed:")) {
         logger.error(`[BICONOMY SERVICE] ========== QUOTE ERROR ==========`);
         logger.error(`[BICONOMY SERVICE] Owner/Wallet: ${ownerAddr}`);
         logger.error(`[BICONOMY SERVICE] Error: ${err.message}`);
-        logger.error(`[BICONOMY SERVICE] Full request params: ${JSON.stringify(request, null, 2)}`);
+        logger.error(
+          `[BICONOMY SERVICE] Full request params: ${JSON.stringify(request, null, 2)}`,
+        );
         logger.error(`[BICONOMY SERVICE] =================================`);
       }
       throw new Error(`Failed to get Biconomy quote: ${err.message}`);
@@ -151,7 +179,7 @@ export class BiconomyService extends Service {
 
   /**
    * Sign payloads based on quote type
-   * 
+   *
    * @param quote - Quote response from Biconomy API
    * @param cdpAccount - CDP account object for signing (preferred)
    * @param walletClient - Viem wallet client (fallback for non-CDP wallets)
@@ -162,7 +190,7 @@ export class BiconomyService extends Service {
     cdpAccount?: CdpAccount,
     walletClient?: WalletClient,
     account?: { address: `0x${string}` },
-    publicClient?: PublicClient
+    publicClient?: PublicClient,
   ): Promise<PayloadToSign[]> {
     const signedPayloads: PayloadToSign[] = [];
 
@@ -180,14 +208,21 @@ export class BiconomyService extends Service {
           throw new Error("Missing signable payload");
         }
         if (typeof signablePayload.message === "string") {
-          throw new Error("Expected typed data payload but received simple message");
+          throw new Error(
+            "Expected typed data payload but received simple message",
+          );
         }
 
         if (cdpAccount) {
-          logger.info(`[BICONOMY SERVICE] Signing typed data using CDP account native method`);
+          logger.info(
+            `[BICONOMY SERVICE] Signing typed data using CDP account native method`,
+          );
           return cdpAccount.signTypedData({
             domain: signablePayload.domain as TypedDataDomain,
-            types: signablePayload.types as Record<string, Array<{ name: string; type: string }>>,
+            types: signablePayload.types as Record<
+              string,
+              Array<{ name: string; type: string }>
+            >,
             primaryType: signablePayload.primaryType,
             message: signablePayload.message as Record<string, unknown>,
           });
@@ -196,13 +231,20 @@ export class BiconomyService extends Service {
         if (walletClient) {
           const walletAccount = this.getWalletAccount(walletClient, account);
           if (!walletAccount) {
-            throw new Error("Wallet client account is required for signing typed payloads");
+            throw new Error(
+              "Wallet client account is required for signing typed payloads",
+            );
           }
-          logger.info(`[BICONOMY SERVICE] Signing typed data using viem wallet client`);
+          logger.info(
+            `[BICONOMY SERVICE] Signing typed data using viem wallet client`,
+          );
           return walletClient.signTypedData({
             account: walletAccount,
             domain: signablePayload.domain as TypedDataDomain,
-            types: signablePayload.types as Record<string, Array<{ name: string; type: string }>>,
+            types: signablePayload.types as Record<
+              string,
+              Array<{ name: string; type: string }>
+            >,
             primaryType: signablePayload.primaryType,
             message: signablePayload.message,
           });
@@ -218,7 +260,11 @@ export class BiconomyService extends Service {
         case "simple": {
           const rawMessage = payload.signablePayload?.message;
           if (typeof rawMessage === "string") {
-            signature = await this.signSimpleMessage(rawMessage, walletClient, account);
+            signature = await this.signSimpleMessage(
+              rawMessage,
+              walletClient,
+              account,
+            );
           } else {
             signature = await signTypedPayload();
           }
@@ -230,7 +276,7 @@ export class BiconomyService extends Service {
             payload,
             walletClient,
             account,
-            publicClient
+            publicClient,
           );
           break;
         }
@@ -250,28 +296,33 @@ export class BiconomyService extends Service {
 
   private getWalletAccount(
     walletClient?: WalletClient,
-    account?: { address: `0x${string}` }
+    account?: { address: `0x${string}` },
   ): Account | `0x${string}` | undefined {
     if (!walletClient) {
       return account?.address;
     }
 
-    const walletAccount = (walletClient as WalletClient & { account?: unknown }).account;
+    const walletAccount = (walletClient as WalletClient & { account?: unknown })
+      .account;
     return walletAccount ?? account?.address;
   }
 
   private async signSimpleMessage(
     message: string,
     walletClient?: WalletClient,
-    account?: { address: `0x${string}` }
+    account?: { address: `0x${string}` },
   ): Promise<`0x${string}`> {
     if (!walletClient || typeof walletClient.signMessage !== "function") {
-      throw new Error("Simple payload signing requires a wallet client with signMessage support");
+      throw new Error(
+        "Simple payload signing requires a wallet client with signMessage support",
+      );
     }
 
     const walletAccount = this.getWalletAccount(walletClient, account);
     if (!walletAccount) {
-      throw new Error("Wallet client account is required for signing simple payloads");
+      throw new Error(
+        "Wallet client account is required for signing simple payloads",
+      );
     }
 
     return walletClient.signMessage({
@@ -284,15 +335,19 @@ export class BiconomyService extends Service {
     payload: PayloadToSign,
     walletClient?: WalletClient,
     account?: { address: `0x${string}` },
-    publicClient?: PublicClient
+    publicClient?: PublicClient,
   ): Promise<`0x${string}`> {
     if (!walletClient || typeof walletClient.sendTransaction !== "function") {
-      throw new Error("Onchain approval requires a wallet client capable of sending transactions");
+      throw new Error(
+        "Onchain approval requires a wallet client capable of sending transactions",
+      );
     }
 
     const walletAccount = this.getWalletAccount(walletClient, account);
     if (!walletAccount) {
-      throw new Error("Wallet client account is required for onchain approvals");
+      throw new Error(
+        "Wallet client account is required for onchain approvals",
+      );
     }
 
     const to = payload.to;
@@ -302,10 +357,15 @@ export class BiconomyService extends Service {
     }
 
     const chainIdFromPayload = payload.chainId;
-    const walletChainId = (walletClient.chain as { id?: number } | undefined)?.id;
-    if (chainIdFromPayload && walletChainId && chainIdFromPayload !== walletChainId) {
+    const walletChainId = (walletClient.chain as { id?: number } | undefined)
+      ?.id;
+    if (
+      chainIdFromPayload &&
+      walletChainId &&
+      chainIdFromPayload !== walletChainId
+    ) {
       throw new Error(
-        `Chain mismatch: wallet is on chain ${walletChainId} but transaction targets chain ${chainIdFromPayload}. Cannot execute cross-chain transaction with wrong wallet configuration.`
+        `Chain mismatch: wallet is on chain ${walletChainId} but transaction targets chain ${chainIdFromPayload}. Cannot execute cross-chain transaction with wrong wallet configuration.`,
       );
     }
 
@@ -322,7 +382,10 @@ export class BiconomyService extends Service {
       ...(gasOverride ? { gas: gasOverride } : {}),
     } as any);
 
-    if (publicClient && typeof publicClient.waitForTransactionReceipt === "function") {
+    if (
+      publicClient &&
+      typeof publicClient.waitForTransactionReceipt === "function"
+    ) {
       logger.info("[BICONOMY SERVICE] Waiting for approval receipt...");
       await publicClient.waitForTransactionReceipt({ hash: txHash });
     }
@@ -352,7 +415,9 @@ export class BiconomyService extends Service {
     try {
       return BigInt(serialized);
     } catch (error) {
-      logger.warn(`[BICONOMY SERVICE] Failed to parse onchain value "${value}", defaulting to 0`);
+      logger.warn(
+        `[BICONOMY SERVICE] Failed to parse onchain value "${value}", defaulting to 0`,
+      );
       return 0n;
     }
   }
@@ -362,10 +427,12 @@ export class BiconomyService extends Service {
    */
   async execute(
     quote: QuoteResponse,
-    signedPayloads: PayloadToSign[]
+    signedPayloads: PayloadToSign[],
   ): Promise<ExecuteResponse> {
     try {
-      logger.info(`[BICONOMY SERVICE] Executing supertransaction for ${quote.ownerAddress}`);
+      logger.info(
+        `[BICONOMY SERVICE] Executing supertransaction for ${quote.ownerAddress}`,
+      );
 
       const executeRequest = {
         ...quote,
@@ -383,14 +450,20 @@ export class BiconomyService extends Service {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Execute request failed: ${response.status} ${errorText}`);
+        throw new Error(
+          `Execute request failed: ${response.status} ${errorText}`,
+        );
       }
 
       const result = (await response.json()) as ExecuteResponse;
-      
+
       if (result.success && result.supertxHash) {
-        logger.info(`[BICONOMY SERVICE] Supertransaction executed: ${result.supertxHash}`);
-        logger.info(`[BICONOMY SERVICE] Track at: ${EXPLORER_URL}/details/${result.supertxHash}`);
+        logger.info(
+          `[BICONOMY SERVICE] Supertransaction executed: ${result.supertxHash}`,
+        );
+        logger.info(
+          `[BICONOMY SERVICE] Track at: ${EXPLORER_URL}/details/${result.supertxHash}`,
+        );
       } else {
         logger.error(`[BICONOMY SERVICE] Execution failed: ${result.error}`);
       }
@@ -399,7 +472,9 @@ export class BiconomyService extends Service {
     } catch (error) {
       const err = error as Error;
       logger.error(`[BICONOMY SERVICE] Failed to execute: ${err.message}`);
-      throw new Error(`Failed to execute Biconomy supertransaction: ${err.message}`);
+      throw new Error(
+        `Failed to execute Biconomy supertransaction: ${err.message}`,
+      );
     }
   }
 
@@ -410,21 +485,26 @@ export class BiconomyService extends Service {
     try {
       logger.info(`[BICONOMY SERVICE] Getting status for ${supertxHash}`);
 
-      const response = (await fetch(`https://network.biconomy.io/v1/explorer/${supertxHash}`, {
-        headers: {
-          "Content-Type": "application/json",
-          ...(this.apiKey && { "X-API-Key": this.apiKey }),
+      const response = (await fetch(
+        `https://network.biconomy.io/v1/explorer/${supertxHash}`,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...(this.apiKey && { "X-API-Key": this.apiKey }),
+          },
         },
-      })) as HttpResponse;
+      )) as HttpResponse;
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Status request failed: ${response.status} ${errorText}`);
+        throw new Error(
+          `Status request failed: ${response.status} ${errorText}`,
+        );
       }
 
       const status = (await response.json()) as SupertxStatus;
       logger.info(`[BICONOMY SERVICE] Status: ${status.status}`);
-      
+
       return status;
     } catch (error) {
       const err = error as Error;
@@ -435,7 +515,7 @@ export class BiconomyService extends Service {
 
   /**
    * Execute a full flow: get quote, sign, execute
-   * 
+   *
    * @param request - Quote request
    * @param cdpAccount - CDP account for signing (preferred - signs on Coinbase servers)
    * @param walletClient - Viem wallet client (fallback for non-CDP wallets)
@@ -449,7 +529,7 @@ export class BiconomyService extends Service {
     walletClient?: WalletClient,
     account?: { address: `0x${string}` },
     publicClient?: PublicClient,
-    onProgress?: (status: string) => void
+    onProgress?: (status: string) => void,
   ): Promise<ExecuteResponse> {
     try {
       // Step 1: Get quote (auto-retrying if funding buffer is insufficient)
@@ -462,7 +542,7 @@ export class BiconomyService extends Service {
         cdpAccount,
         walletClient,
         account,
-        publicClient
+        publicClient,
       );
 
       // Step 3: Execute
@@ -478,7 +558,9 @@ export class BiconomyService extends Service {
       return result;
     } catch (error) {
       const err = error as Error;
-      logger.error(`[BICONOMY SERVICE] Intent execution failed: ${err.message}`);
+      logger.error(
+        `[BICONOMY SERVICE] Intent execution failed: ${err.message}`,
+      );
       throw error;
     }
   }
@@ -492,7 +574,7 @@ export class BiconomyService extends Service {
     srcToken: string,
     dstToken: string,
     amount: string,
-    slippage: number = 0.01
+    slippage: number = 0.01,
   ): ComposeFlow {
     return {
       type: "/instructions/intent-simple",
@@ -511,7 +593,7 @@ export class BiconomyService extends Service {
   /**
    * Build a withdrawal instruction to transfer output tokens from the Nexus/Smart Account back to EOA
    * This is REQUIRED for EOA mode - without it, funds remain in the Smart Account
-   * 
+   *
    * Uses 'runtimeErc20Balance' to transfer the full balance at execution time
    * @see https://docs.biconomy.io/supertransaction-api/execution-modes/eoa
    */
@@ -519,7 +601,7 @@ export class BiconomyService extends Service {
     tokenAddress: string,
     chainId: number,
     recipientAddress: string,
-    upperBoundTimestamp?: number
+    upperBoundTimestamp?: number,
   ): ComposeFlow {
     return {
       type: "/instructions/build",
@@ -545,9 +627,17 @@ export class BiconomyService extends Service {
    * Build a multi-position intent flow
    */
   buildMultiIntentFlow(
-    inputPositions: Array<{ chainId: number; tokenAddress: string; amount: string }>,
-    targetPositions: Array<{ chainId: number; tokenAddress: string; weight: number }>,
-    slippage: number = 0.01
+    inputPositions: Array<{
+      chainId: number;
+      tokenAddress: string;
+      amount: string;
+    }>,
+    targetPositions: Array<{
+      chainId: number;
+      tokenAddress: string;
+      weight: number;
+    }>,
+    slippage: number = 0.01,
   ): ComposeFlow {
     return {
       type: "/instructions/intent",
@@ -573,16 +663,16 @@ export class BiconomyService extends Service {
 
   /**
    * Build a CCIP bridge flow using Chainlink's Cross-Chain Interoperability Protocol
-   * 
+   *
    * Bridges tokens from source chain to destination chain via CCIP.
-   * 
+   *
    * **IMPORTANT**: Only supports CCIP-compatible tokens on the specific lane.
    * Common CCIP tokens: USDC, LINK, WETH, WBTC, DAI
    * Not all tokens are supported on all chain pairs.
-   * 
+   *
    * CCIP fees are always paid in the native token of the source chain.
    * Bridge finality typically takes 15-22 minutes.
-   * 
+   *
    * @see https://docs.biconomy.io/supertransaction-api/endpoints/build-ccip
    * @see https://docs.chain.link/ccip/supported-networks
    */
@@ -591,7 +681,7 @@ export class BiconomyService extends Service {
     dstChainId: number,
     srcToken: string,
     dstToken: string,
-    amount: string
+    amount: string,
   ): ComposeFlow {
     return {
       type: "/instructions/build-ccip",
@@ -636,16 +726,21 @@ export class BiconomyService extends Service {
 
   private async getQuoteWithFundingRetries(
     request: QuoteRequest,
-    onProgress?: (status: string) => void
+    onProgress?: (status: string) => void,
   ): Promise<QuoteResponse> {
     let currentRequest = this.cloneQuoteRequest(request);
     const ownerAddr = request.ownerAddress || "unknown";
 
     for (let attempt = 0; attempt <= FUNDING_RETRY_MAX_ATTEMPTS; attempt++) {
       try {
-        const attemptLabel = attempt === 0 ? "Getting quote from Biconomy..." : `Getting quote (retry ${attempt})...`;
+        const attemptLabel =
+          attempt === 0
+            ? "Getting quote from Biconomy..."
+            : `Getting quote (retry ${attempt})...`;
         onProgress?.(attemptLabel);
-        logger.info(`[BICONOMY SERVICE] Quote attempt ${attempt + 1}/${FUNDING_RETRY_MAX_ATTEMPTS + 1} for wallet: ${ownerAddr}`);
+        logger.info(
+          `[BICONOMY SERVICE] Quote attempt ${attempt + 1}/${FUNDING_RETRY_MAX_ATTEMPTS + 1} for wallet: ${ownerAddr}`,
+        );
         return await this.getQuote(currentRequest);
       } catch (error) {
         const err = error as Error;
@@ -655,19 +750,30 @@ export class BiconomyService extends Service {
           this.isFundingShortfallError(err);
 
         if (!canRetry) {
-          logger.error(`[BICONOMY SERVICE] ========== QUOTE FAILED (NO RETRY) ==========`);
+          logger.error(
+            `[BICONOMY SERVICE] ========== QUOTE FAILED (NO RETRY) ==========`,
+          );
           logger.error(`[BICONOMY SERVICE] Owner/Wallet: ${ownerAddr}`);
-          logger.error(`[BICONOMY SERVICE] Attempt: ${attempt + 1}/${FUNDING_RETRY_MAX_ATTEMPTS + 1}`);
+          logger.error(
+            `[BICONOMY SERVICE] Attempt: ${attempt + 1}/${FUNDING_RETRY_MAX_ATTEMPTS + 1}`,
+          );
           logger.error(`[BICONOMY SERVICE] Error: ${err.message}`);
-          logger.error(`[BICONOMY SERVICE] Can retry: false (funding shortfall: ${this.isFundingShortfallError(err)}, has funding tokens: ${!!currentRequest.fundingTokens?.length})`);
-          logger.error(`[BICONOMY SERVICE] ==============================================`);
+          logger.error(
+            `[BICONOMY SERVICE] Can retry: false (funding shortfall: ${this.isFundingShortfallError(err)}, has funding tokens: ${!!currentRequest.fundingTokens?.length})`,
+          );
+          logger.error(
+            `[BICONOMY SERVICE] ==============================================`,
+          );
           throw err;
         }
 
-        currentRequest = this.applyFundingRetryBuffer(currentRequest, FUNDING_RETRY_INCREMENT_BPS);
+        currentRequest = this.applyFundingRetryBuffer(
+          currentRequest,
+          FUNDING_RETRY_INCREMENT_BPS,
+        );
         const cumulativeBps = FUNDING_RETRY_INCREMENT_BPS * BigInt(attempt + 1);
         const retryMessage = `Funding shortfall detected. Increasing funding buffer to +${this.formatBps(
-          cumulativeBps
+          cumulativeBps,
         )}% and retrying...`;
         logger.warn(`[BICONOMY SERVICE] ${retryMessage}`);
         onProgress?.(retryMessage);
@@ -694,7 +800,10 @@ export class BiconomyService extends Service {
     );
   }
 
-  private applyFundingRetryBuffer(request: QuoteRequest, incrementBps: bigint): QuoteRequest {
+  private applyFundingRetryBuffer(
+    request: QuoteRequest,
+    incrementBps: bigint,
+  ): QuoteRequest {
     if (!request.fundingTokens?.length) {
       return request;
     }
@@ -705,7 +814,8 @@ export class BiconomyService extends Service {
       fundingTokens: request.fundingTokens.map((token) => {
         try {
           const current = BigInt(token.amount);
-          const adjusted = (current * multiplier + (BPS_DENOMINATOR - 1n)) / BPS_DENOMINATOR;
+          const adjusted =
+            (current * multiplier + (BPS_DENOMINATOR - 1n)) / BPS_DENOMINATOR;
           return {
             ...token,
             amount: adjusted.toString(),
@@ -714,7 +824,7 @@ export class BiconomyService extends Service {
           logger.warn(
             `[BICONOMY SERVICE] Unable to increase funding token amount "${token.amount}": ${
               (parseError as Error).message
-            }`
+            }`,
           );
           return token;
         }

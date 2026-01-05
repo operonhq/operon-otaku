@@ -59,7 +59,7 @@ export const getTokenPriceChartAction: Action = {
 
       // Read parameters from state
       const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-      const params = composedState?.data?.actionParams || {};
+      const params = (composedState?.data?.actionParams || {}) as Record<string, any>;
 
       // Extract and validate token parameter (required)
       const tokenRaw: string | undefined = params?.token?.trim();
@@ -195,7 +195,7 @@ Please analyze this price chart data and provide insights about the token's pric
       
       // Try to capture input params even in failure
       const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-      const params = composedState?.data?.actionParams || {};
+      const params = (composedState?.data?.actionParams || {}) as Record<string, any>;
       const failureInputParams = {
         token: params?.token,
         timeframe: params?.timeframe || '24h',

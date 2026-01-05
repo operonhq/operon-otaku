@@ -1,12 +1,23 @@
-import type { Action, IAgentRuntime, Memory, State, HandlerCallback, ActionResult } from '@elizaos/core';
-import { GamificationService } from '../services/GamificationService';
+import type {
+  Action,
+  IAgentRuntime,
+  Memory,
+  State,
+  HandlerCallback,
+  ActionResult,
+} from "@elizaos/core";
+import { GamificationService } from "../services/GamificationService";
 
 export const getPointsSummaryAction: Action = {
-  name: 'GET_POINTS_SUMMARY',
-  description: "Get the user's current points, level, streak, and recent awards",
-  similes: ['CHECK_POINTS', 'MY_POINTS', 'POINTS_BALANCE', 'SHOW_LEVEL'],
+  name: "GET_POINTS_SUMMARY",
+  description:
+    "Get the user's current points, level, streak, and recent awards",
+  similes: ["CHECK_POINTS", "MY_POINTS", "POINTS_BALANCE", "SHOW_LEVEL"],
 
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     return true;
   },
 
@@ -15,12 +26,14 @@ export const getPointsSummaryAction: Action = {
     message: Memory,
     state?: State,
     options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     try {
-      const gamificationService = runtime.getService('gamification') as GamificationService;
+      const gamificationService = runtime.getService(
+        "gamification",
+      ) as GamificationService;
       if (!gamificationService) {
-        const errorText = 'Gamification service not available';
+        const errorText = "Gamification service not available";
         await callback?.({
           text: errorText,
         });
@@ -30,7 +43,9 @@ export const getPointsSummaryAction: Action = {
         };
       }
 
-      const summary = await gamificationService.getUserSummary(message.entityId);
+      const summary = await gamificationService.getUserSummary(
+        message.entityId,
+      );
 
       const text = `**Your Points Summary**
 - **Total Points:** ${summary.allTimePoints.toLocaleString()}
@@ -39,7 +54,7 @@ export const getPointsSummaryAction: Action = {
 - **Daily Streak:** ${summary.streakDays} days${
         summary.nextMilestone
           ? `\n- **Next Milestone:** ${summary.nextMilestone.pointsNeeded.toLocaleString()} points to ${summary.nextMilestone.levelName}`
-          : ''
+          : ""
       }`;
 
       await callback?.({
@@ -50,10 +65,10 @@ export const getPointsSummaryAction: Action = {
       return {
         text,
         success: true,
-        data: summary,
+        data: summary as unknown as Record<string, unknown>,
       };
     } catch (error) {
-      const errorText = 'Error fetching points summary';
+      const errorText = "Error fetching points summary";
       await callback?.({
         text: errorText,
       });
@@ -64,4 +79,3 @@ export const getPointsSummaryAction: Action = {
     }
   },
 };
-

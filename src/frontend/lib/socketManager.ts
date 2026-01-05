@@ -1,4 +1,4 @@
-import { io, Socket } from 'socket.io-client';
+import { io, Socket } from "socket.io-client";
 
 // Socket message types (must match server's SOCKET_MESSAGE_TYPE enum)
 const SOCKET_MESSAGE_TYPE = {
@@ -16,26 +16,26 @@ class SocketManager {
   private userName: string | null = null;
   private activeChannels: Set<string> = new Set();
 
-  connect(userId: string, userName?: string) {
+  connect(userId: string, userName?: string): Socket | undefined {
     if (this.socket?.connected) {
-      console.log('Socket already connected');
+      console.log("Socket already connected");
       // Update username if provided (allows updating after initial connect)
       if (userName) {
         this.userName = userName;
       }
       return this.socket;
     }
-    
+
     this.userId = userId;
     this.userName = userName || null;
-    
+
     // Get auth token from localStorage for Socket.IO authentication
-    const token = localStorage.getItem('auth-token');
+    const token = localStorage.getItem("auth-token");
     if (!token) {
-      console.warn('No auth token found for socket connection');
+      console.warn("No auth token found for socket connection");
     }
-    
-    this.socket = io(window.location.origin + '/', {
+
+    this.socket = io(window.location.origin + "/", {
       autoConnect: true,
       reconnection: true,
       reconnectionDelay: 1000,
@@ -45,16 +45,16 @@ class SocketManager {
       },
     });
 
-    this.socket.on('connect', () => {
-      console.log(' Connected to Eliza server');
+    this.socket.on("connect", () => {
+      console.log(" Connected to Eliza server");
     });
 
-    this.socket.on('disconnect', (reason) => {
-      console.log(' Disconnected from Eliza server:', reason);
+    this.socket.on("disconnect", (reason) => {
+      console.log(" Disconnected from Eliza server:", reason);
     });
 
-    this.socket.on('connect_error', (error) => {
-      console.error('Connection error:', error);
+    this.socket.on("connect_error", (error) => {
+      console.error("Connection error:", error);
     });
 
     return this.socket;
@@ -67,14 +67,18 @@ class SocketManager {
     this.userName = userName;
   }
 
-  joinChannel(channelId: string, serverId: string, metadata?: Record<string, any>) {
+  joinChannel(
+    channelId: string,
+    serverId: string,
+    metadata?: Record<string, any>,
+  ) {
     if (!this.socket) {
-      throw new Error('Socket not connected. Call connect() first.');
+      throw new Error("Socket not connected. Call connect() first.");
     }
-    
+
     this.activeChannels.add(channelId);
-    
-    this.socket.emit('message', {
+
+    this.socket.emit("message", {
       type: SOCKET_MESSAGE_TYPE.ROOM_JOINING,
       payload: {
         channelId,
@@ -83,7 +87,6 @@ class SocketManager {
         metadata,
       },
     });
-    
   }
 
   leaveChannel(channelId: string) {
@@ -91,38 +94,46 @@ class SocketManager {
     console.log(`Left channel: ${channelId}`);
   }
 
-  sendMessage(channelId: string, message: string, serverId: string, metadata?: Record<string, any>) {
+  sendMessage(
+    channelId: string,
+    message: string,
+    serverId: string,
+    metadata?: Record<string, any>,
+  ) {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
-    
+
     // Use stored username or fallback to a short-form identifier
-    const senderName = this.userName || `User-${this.userId?.substring(0, 8) || 'Unknown'}`;
-    
+    const senderName =
+      this.userName || `User-${this.userId?.substring(0, 8) || "Unknown"}`;
+
     const payload = {
       senderId: this.userId,
       senderName,
       message,
       channelId,
       serverId,
-      source: 'custom_ui',
+      source: "custom_ui",
       metadata,
     };
-    
-    console.log(' [SocketManager] Emitting SEND_MESSAGE:', payload);
-    
-    this.socket.emit('message', {
+
+    console.log(" [SocketManager] Emitting SEND_MESSAGE:", payload);
+
+    this.socket.emit("message", {
       type: SOCKET_MESSAGE_TYPE.SEND_MESSAGE,
       payload,
     });
   }
 
-  onMessage(callback: (data: any) => void) {
+  onMessage(callback: (data: any) => void): () => void {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
-    this.socket.on('messageBroadcast', callback);
-    return () => this.socket?.off('messageBroadcast', callback);
+    this.socket.on("messageBroadcast", callback);
+    return () => {
+      this.socket?.off("messageBroadcast", callback);
+    };
   }
 
   disconnect() {
@@ -139,4 +150,3 @@ class SocketManager {
 }
 
 export const socketManager = new SocketManager();
-

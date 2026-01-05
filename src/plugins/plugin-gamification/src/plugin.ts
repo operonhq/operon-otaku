@@ -1,18 +1,32 @@
-import type { Plugin, UUID } from '@elizaos/core';
-import { logger } from '@elizaos/core';
-import type { IAgentRuntime } from '@elizaos/core';
-import type { Request, Response } from 'express';
-import jwt from 'jsonwebtoken';
-import { gamificationSchema } from './schema';
-import { GamificationService } from './services/GamificationService';
-import { ReferralService } from './services/ReferralService';
-import { LeaderboardService } from './services/LeaderboardService';
-import { pointsProvider } from './providers/pointsProvider';
-import { leaderboardProvider } from './providers/leaderboardProvider';
-import { getPointsSummaryAction } from './actions/getPointsSummary';
-import { getReferralCodeAction } from './actions/getReferralCode';
-import { getLeaderboardAction } from './actions/getLeaderboard';
-import { gamificationEvents } from './events/eventHandlers';
+import type { Plugin, UUID, RouteRequest, RouteResponse } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { Request, Response } from "express";
+
+// Type guard to convert Express handlers to ElizaOS Route handlers
+type ExpressHandler = (
+  req: Request,
+  res: Response,
+  runtime: IAgentRuntime,
+) => Promise<void>;
+type RouteHandler = (
+  req: RouteRequest,
+  res: RouteResponse,
+  runtime: IAgentRuntime,
+) => Promise<void>;
+const asRouteHandler = (handler: ExpressHandler): RouteHandler =>
+  handler as unknown as RouteHandler;
+import jwt from "jsonwebtoken";
+import { gamificationSchema } from "./schema";
+import { GamificationService } from "./services/GamificationService";
+import { ReferralService } from "./services/ReferralService";
+import { LeaderboardService } from "./services/LeaderboardService";
+import { pointsProvider } from "./providers/pointsProvider";
+import { leaderboardProvider } from "./providers/leaderboardProvider";
+import { getPointsSummaryAction } from "./actions/getPointsSummary";
+import { getReferralCodeAction } from "./actions/getReferralCode";
+import { getLeaderboardAction } from "./actions/getLeaderboard";
+import { gamificationEvents } from "./events/eventHandlers";
 
 interface AuthTokenPayload {
   userId: string;
@@ -30,12 +44,12 @@ interface AuthTokenPayload {
 function verifyAuth(req: Request): { userId: string; isAdmin: boolean } | null {
   const JWT_SECRET = process.env.JWT_SECRET;
   if (!JWT_SECRET) {
-    logger.error('[GamificationPlugin] JWT_SECRET not configured');
+    logger.error("[GamificationPlugin] JWT_SECRET not configured");
     return null;
   }
 
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return null;
   }
 
@@ -44,7 +58,7 @@ function verifyAuth(req: Request): { userId: string; isAdmin: boolean } | null {
     const decoded = jwt.verify(token, JWT_SECRET) as AuthTokenPayload;
     return { userId: decoded.userId, isAdmin: decoded.isAdmin || false };
   } catch (error) {
-    logger.debug('[GamificationPlugin] Invalid auth token');
+    logger.debug("[GamificationPlugin] Invalid auth token");
     return null;
   }
 }
@@ -56,8 +70,8 @@ function sendUnauthorized(res: Response): void {
   res.status(401).json({
     success: false,
     error: {
-      code: 'UNAUTHORIZED',
-      message: 'Authentication required. Please provide a valid Bearer token.',
+      code: "UNAUTHORIZED",
+      message: "Authentication required. Please provide a valid Bearer token.",
     },
   });
 }
@@ -67,23 +81,31 @@ function sendUnauthorized(res: Response): void {
  * PUBLIC endpoint - but does NOT expose raw userIds
  * Only shows anonymized display info (username, avatar, rank)
  */
-async function handleGetLeaderboard(req: Request, res: Response, runtime: IAgentRuntime): Promise<void> {
+async function handleGetLeaderboard(
+  req: Request,
+  res: Response,
+  runtime: IAgentRuntime,
+): Promise<void> {
   try {
-    const scope = (req.query.scope as 'weekly' | 'all_time') || 'weekly';
+    const scope = (req.query.scope as "weekly" | "all_time") || "weekly";
 
     // Validate and limit input
     const rawLimit = parseInt(req.query.limit as string) || 50;
     const limit = Math.min(Math.max(1, rawLimit), 100); // Clamp between 1 and 100
 
     // Validate scope
-    if (scope !== 'weekly' && scope !== 'all_time') {
-      res.status(400).json({ error: 'Invalid scope. Must be "weekly" or "all_time"' });
+    if (scope !== "weekly" && scope !== "all_time") {
+      res
+        .status(400)
+        .json({ error: 'Invalid scope. Must be "weekly" or "all_time"' });
       return;
     }
 
-    const gamificationService = runtime.getService('gamification') as GamificationService;
+    const gamificationService = runtime.getService(
+      "gamification",
+    ) as GamificationService;
     if (!gamificationService) {
-      res.status(503).json({ error: 'Gamification service not available' });
+      res.status(503).json({ error: "Gamification service not available" });
       return;
     }
 
@@ -93,7 +115,10 @@ async function handleGetLeaderboard(req: Request, res: Response, runtime: IAgent
     let userRank = 0;
     const auth = verifyAuth(req);
     if (auth) {
-      userRank = await gamificationService.getUserRank(auth.userId as UUID, scope);
+      userRank = await gamificationService.getUserRank(
+        auth.userId as UUID,
+        scope,
+      );
     }
 
     // Return sanitized entries - NO raw userIds exposed
@@ -113,8 +138,8 @@ async function handleGetLeaderboard(req: Request, res: Response, runtime: IAgent
       limit,
     });
   } catch (error) {
-    logger.error({ error }, '[GamificationPlugin] Error fetching leaderboard');
-    res.status(500).json({ error: 'Error fetching leaderboard' });
+    logger.error({ error }, "[GamificationPlugin] Error fetching leaderboard");
+    res.status(500).json({ error: "Error fetching leaderboard" });
   }
 }
 
@@ -123,7 +148,11 @@ async function handleGetLeaderboard(req: Request, res: Response, runtime: IAgent
  * PROTECTED endpoint - requires authentication
  * Users can only view their own summary
  */
-async function handleGetUserSummary(req: Request, res: Response, runtime: IAgentRuntime): Promise<void> {
+async function handleGetUserSummary(
+  req: Request,
+  res: Response,
+  runtime: IAgentRuntime,
+): Promise<void> {
   try {
     // Require authentication
     const auth = verifyAuth(req);
@@ -135,9 +164,11 @@ async function handleGetUserSummary(req: Request, res: Response, runtime: IAgent
     // Use authenticated userId - users can only see their own summary
     const userId = auth.userId;
 
-    const gamificationService = runtime.getService('gamification') as GamificationService;
+    const gamificationService = runtime.getService(
+      "gamification",
+    ) as GamificationService;
     if (!gamificationService) {
-      res.status(503).json({ error: 'Gamification service not available' });
+      res.status(503).json({ error: "Gamification service not available" });
       return;
     }
 
@@ -147,8 +178,8 @@ async function handleGetUserSummary(req: Request, res: Response, runtime: IAgent
     const { userId: _omit, ...safeSummary } = summary;
     res.json(safeSummary);
   } catch (error) {
-    logger.error({ error }, '[GamificationPlugin] Error fetching user summary');
-    res.status(500).json({ error: 'Error fetching user summary' });
+    logger.error({ error }, "[GamificationPlugin] Error fetching user summary");
+    res.status(500).json({ error: "Error fetching user summary" });
   }
 }
 
@@ -157,7 +188,11 @@ async function handleGetUserSummary(req: Request, res: Response, runtime: IAgent
  * PROTECTED endpoint - requires authentication
  * Users can only view their own referral code
  */
-async function handleGetReferralCode(req: Request, res: Response, runtime: IAgentRuntime): Promise<void> {
+async function handleGetReferralCode(
+  req: Request,
+  res: Response,
+  runtime: IAgentRuntime,
+): Promise<void> {
   try {
     // Require authentication
     const auth = verifyAuth(req);
@@ -169,33 +204,42 @@ async function handleGetReferralCode(req: Request, res: Response, runtime: IAgen
     // Use authenticated userId - users can only see their own referral code
     const userId = auth.userId;
 
-    const referralService = runtime.getService('referral') as ReferralService;
+    const referralService = runtime.getService("referral") as ReferralService;
     if (!referralService) {
-      res.status(503).json({ error: 'Referral service not available' });
+      res.status(503).json({ error: "Referral service not available" });
       return;
     }
 
-    const { code, stats } = await referralService.getOrCreateCode(userId as UUID);
+    const { code, stats } = await referralService.getOrCreateCode(
+      userId as UUID,
+    );
     res.json({ code, stats, referralLink: `https://otaku.so/?ref=${code}` });
   } catch (error) {
-    logger.error({ error }, '[GamificationPlugin] Error fetching referral code');
-    res.status(500).json({ error: 'Error fetching referral code' });
+    logger.error(
+      { error },
+      "[GamificationPlugin] Error fetching referral code",
+    );
+    res.status(500).json({ error: "Error fetching referral code" });
   }
 }
 
 export const gamificationPlugin: Plugin = {
-  name: 'gamification',
-  description: 'Points economy, leaderboards, and referral system for Otaku',
+  name: "gamification",
+  description: "Points economy, leaderboards, and referral system for Otaku",
 
   schema: gamificationSchema,
 
   async init() {
-    logger.info('*** Initializing Gamification plugin ***');
+    logger.info("*** Initializing Gamification plugin ***");
   },
 
   services: [GamificationService, ReferralService, LeaderboardService],
 
-  actions: [getPointsSummaryAction, getReferralCodeAction, getLeaderboardAction],
+  actions: [
+    getPointsSummaryAction,
+    getReferralCodeAction,
+    getLeaderboardAction,
+  ],
 
   providers: [pointsProvider, leaderboardProvider],
 
@@ -207,19 +251,19 @@ export const gamificationPlugin: Plugin = {
   // - /referral: PROTECTED (auth required, own data only)
   routes: [
     {
-      path: '/leaderboard',
-      type: 'GET',
-      handler: handleGetLeaderboard,
+      path: "/leaderboard",
+      type: "GET",
+      handler: asRouteHandler(handleGetLeaderboard),
     },
     {
-      path: '/summary',
-      type: 'GET',
-      handler: handleGetUserSummary,
+      path: "/summary",
+      type: "GET",
+      handler: asRouteHandler(handleGetUserSummary),
     },
     {
-      path: '/referral',
-      type: 'GET',
-      handler: handleGetReferralCode,
+      path: "/referral",
+      type: "GET",
+      handler: asRouteHandler(handleGetReferralCode),
     },
   ],
 };

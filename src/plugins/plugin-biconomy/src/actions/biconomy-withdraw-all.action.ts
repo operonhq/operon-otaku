@@ -50,7 +50,7 @@ const getChainNameFromId = (chainId: number): string => {
 
 /**
  * Biconomy Withdraw Action
- * 
+ *
  * Withdraws a specific token from the Nexus Smart Account to an address.
  * Parameters: chainId, tokenAddress, withdrawAddress
  */
@@ -69,17 +69,20 @@ Parameters: chain (string), token (string), fundingToken (string, optional), wit
   parameters: {
     chain: {
       type: "string",
-      description: "Chain name (e.g., 'base', 'ethereum', 'arbitrum', 'optimism', 'polygon'). Default: base",
+      description:
+        "Chain name (e.g., 'base', 'ethereum', 'arbitrum', 'optimism', 'polygon'). Default: base",
       required: false,
     },
     token: {
       type: "string",
-      description: "Token symbol or contract address to withdraw from Smart Account (e.g., 'usdc', 'weth', '0x...')",
+      description:
+        "Token symbol or contract address to withdraw from Smart Account (e.g., 'usdc', 'weth', '0x...')",
       required: true,
     },
     fundingToken: {
       type: "string",
-      description: "Token in EOA to use for paying gas (e.g., 'usdc'). Must be in your EOA wallet. Default: usdc",
+      description:
+        "Token in EOA to use for paying gas (e.g., 'usdc'). Must be in your EOA wallet. Default: usdc",
       required: false,
     },
     fundingAmount: {
@@ -95,7 +98,12 @@ Parameters: chain (string), token (string), fundingToken (string, optional), wit
   },
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
-    return validateBiconomyService(runtime, "BICONOMY_WITHDRAW", state, message);
+    return validateBiconomyService(
+      runtime,
+      "BICONOMY_WITHDRAW",
+      state,
+      message,
+    );
   },
 
   handler: async (
@@ -103,51 +111,96 @@ Parameters: chain (string), token (string), fundingToken (string, optional), wit
     message: Memory,
     state?: State,
     options?: { [key: string]: unknown },
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     logger.info("[BICONOMY_WITHDRAW] Handler invoked");
 
     try {
       // Get services
-      const biconomyService = runtime.getService<BiconomyService>(BiconomyService.serviceType);
+      const biconomyService = runtime.getService<BiconomyService>(
+        BiconomyService.serviceType,
+      );
       if (!biconomyService) {
         callback?.({ text: "❌ Biconomy service not initialized" });
-        return { text: "❌ Biconomy service not initialized", success: false, error: "service_unavailable" };
+        return {
+          text: "❌ Biconomy service not initialized",
+          success: false,
+          error: "service_unavailable",
+        };
       }
 
-      const cdpService = runtime.getService?.("CDP_SERVICE") as unknown as CdpService;
+      const cdpService = runtime.getService?.(
+        "CDP_SERVICE",
+      ) as unknown as CdpService;
       if (!cdpService) {
         callback?.({ text: "❌ CDP service not available" });
-        return { text: "❌ CDP service not available", success: false, error: "service_unavailable" };
+        return {
+          text: "❌ CDP service not available",
+          success: false,
+          error: "service_unavailable",
+        };
       }
 
       // Extract parameters
-      const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-      const params = composedState?.data?.actionParams || {};
+      const composedState = await runtime.composeState(
+        message,
+        ["ACTION_STATE"],
+        true,
+      );
+      interface WithdrawParams {
+        chain?: string;
+        token?: string;
+        fundingToken?: string;
+        fundingAmount?: string;
+        withdrawAddress?: string;
+      }
+      const params = (composedState?.data?.actionParams ||
+        {}) as WithdrawParams;
 
-      const chainName = (params?.chain?.toLowerCase().trim() || "base") as string;
-      const tokenParam = params?.token?.toLowerCase().trim() as string;
-      const fundingTokenParam = (params?.fundingToken?.toLowerCase().trim() || "usdc") as string;
-      const fundingAmount = (params?.fundingAmount?.trim() || "2") as string;
-      const withdrawAddressParam = params?.withdrawAddress?.trim() as string | undefined;
+      const chainName = (params.chain?.toLowerCase().trim() ||
+        "base") as string;
+      const tokenParam = params.token?.toLowerCase().trim() as string;
+      const fundingTokenParam = (params.fundingToken?.toLowerCase().trim() ||
+        "usdc") as string;
+      const fundingAmount = (params.fundingAmount?.trim() || "2") as string;
+      const withdrawAddressParam = params.withdrawAddress?.trim() as
+        | string
+        | undefined;
 
       // Validate required params
       if (!tokenParam) {
-        callback?.({ text: "❌ Missing required parameter: token (e.g., 'usdc', '0x...')" });
-        return { text: "❌ Missing required parameter: token", success: false, error: "invalid_params" };
+        callback?.({
+          text: "❌ Missing required parameter: token (e.g., 'usdc', '0x...')",
+        });
+        return {
+          text: "❌ Missing required parameter: token",
+          success: false,
+          error: "invalid_params",
+        };
       }
 
       // Resolve chain ID
       const chainId = biconomyService.resolveChainId(chainName);
       if (!chainId) {
         callback?.({ text: `❌ Unsupported chain: ${chainName}` });
-        return { text: `❌ Unsupported chain: ${chainName}`, success: false, error: "unsupported_chain" };
+        return {
+          text: `❌ Unsupported chain: ${chainName}`,
+          success: false,
+          error: "unsupported_chain",
+        };
       }
 
-      logger.info(`[BICONOMY_WITHDRAW] chain=${chainName} (${chainId}), token=${tokenParam}`);
+      logger.info(
+        `[BICONOMY_WITHDRAW] chain=${chainName} (${chainId}), token=${tokenParam}`,
+      );
 
       // Get user wallet for signing
-      const wallet = await getEntityWallet(runtime as any, message, "BICONOMY_WITHDRAW", callback);
+      const wallet = await getEntityWallet(
+        runtime as any,
+        message,
+        "BICONOMY_WITHDRAW",
+        callback,
+      );
       if (wallet.success === false) {
         return wallet.result;
       }
@@ -155,7 +208,11 @@ Parameters: chain (string), token (string), fundingToken (string, optional), wit
       const accountName = wallet.metadata?.accountName as string;
       if (!accountName) {
         callback?.({ text: "❌ Could not resolve user wallet" });
-        return { text: "❌ Could not resolve user wallet", success: false, error: "missing_wallet" };
+        return {
+          text: "❌ Could not resolve user wallet",
+          success: false,
+          error: "missing_wallet",
+        };
       }
 
       // Get CDP client for signing
@@ -171,32 +228,53 @@ Parameters: chain (string), token (string), fundingToken (string, optional), wit
       const publicClient = viemClient.publicClient;
 
       // Determine withdraw address (default to user's EOA)
-      const withdrawAddress = (withdrawAddressParam || userAddress) as `0x${string}`;
+      const withdrawAddress = (withdrawAddressParam ||
+        userAddress) as `0x${string}`;
 
       // Resolve token addresses
       const tokenAddress = await resolveTokenToAddress(tokenParam, chainName);
       if (!tokenAddress) {
-        callback?.({ text: `❌ Cannot resolve token: ${tokenParam} on ${chainName}` });
-        return { text: `❌ Cannot resolve token: ${tokenParam} on ${chainName}`, success: false, error: "token_resolution_failed" };
+        callback?.({
+          text: `❌ Cannot resolve token: ${tokenParam} on ${chainName}`,
+        });
+        return {
+          text: `❌ Cannot resolve token: ${tokenParam} on ${chainName}`,
+          success: false,
+          error: "token_resolution_failed",
+        };
       }
 
-      const fundingTokenAddress = await resolveTokenToAddress(fundingTokenParam, chainName);
+      const fundingTokenAddress = await resolveTokenToAddress(
+        fundingTokenParam,
+        chainName,
+      );
       if (!fundingTokenAddress) {
-        callback?.({ text: `❌ Cannot resolve funding token: ${fundingTokenParam} on ${chainName}` });
-        return { text: `❌ Cannot resolve funding token: ${fundingTokenParam}`, success: false, error: "token_resolution_failed" };
+        callback?.({
+          text: `❌ Cannot resolve funding token: ${fundingTokenParam} on ${chainName}`,
+        });
+        return {
+          text: `❌ Cannot resolve funding token: ${fundingTokenParam}`,
+          success: false,
+          error: "token_resolution_failed",
+        };
       }
 
-      callback?.({ text: `🔄 Creating withdrawal instruction for ${tokenParam.toUpperCase()} on ${chainName}...` });
+      callback?.({
+        text: `🔄 Creating withdrawal instruction for ${tokenParam.toUpperCase()} on ${chainName}...`,
+      });
 
       // Build withdrawal instruction using runtimeErc20Balance
       const withdrawalFlow = biconomyService.buildWithdrawalInstruction(
         tokenAddress,
         chainId,
-        withdrawAddress
+        withdrawAddress,
       );
 
       // Get funding token decimals and amount
-      const fundingDecimals = await getTokenDecimals(fundingTokenAddress, chainName);
+      const fundingDecimals = await getTokenDecimals(
+        fundingTokenAddress,
+        chainName,
+      );
       const fundingAmountWei = parseUnits(fundingAmount, fundingDecimals);
 
       // Build quote request with funding token from EOA
@@ -217,7 +295,9 @@ Parameters: chain (string), token (string), fundingToken (string, optional), wit
         },
       };
 
-      callback?.({ text: `🔄 Getting quote (funding: ${fundingAmount} ${fundingTokenParam.toUpperCase()} from EOA)...` });
+      callback?.({
+        text: `🔄 Getting quote (funding: ${fundingAmount} ${fundingTokenParam.toUpperCase()} from EOA)...`,
+      });
 
       // Execute
       const result = await biconomyService.executeIntent(
@@ -226,7 +306,7 @@ Parameters: chain (string), token (string), fundingToken (string, optional), wit
         walletClient,
         { address: userAddress },
         publicClient,
-        (status) => callback?.({ text: status })
+        (status) => callback?.({ text: status }),
       );
 
       if (result.success && result.supertxHash) {
@@ -244,28 +324,40 @@ Parameters: chain (string), token (string), fundingToken (string, optional), wit
 **Track:** [MEE Explorer](${explorerUrl})
         `.trim();
 
-        callback?.({ text: responseText, actions: ["BICONOMY_WITHDRAW"], source: message.content.source });
-        return { 
-          text: responseText, 
-          success: true, 
-          data: { 
-            supertxHash: result.supertxHash, 
+        callback?.({
+          text: responseText,
+          actions: ["BICONOMY_WITHDRAW"],
+          source: message.content.source,
+        });
+        return {
+          text: responseText,
+          success: true,
+          data: {
+            supertxHash: result.supertxHash,
             explorerUrl,
             chainId,
             tokenAddress,
             withdrawAddress,
-          } 
+          },
         };
       } else {
         const errorMsg = result.error || "Unknown error";
         callback?.({ text: `❌ Execution failed: ${errorMsg}` });
-        return { text: `❌ Execution failed: ${errorMsg}`, success: false, error: "execution_failed" };
+        return {
+          text: `❌ Execution failed: ${errorMsg}`,
+          success: false,
+          error: "execution_failed",
+        };
       }
     } catch (error) {
       const err = error as Error;
       logger.error(`[BICONOMY_WITHDRAW] Error: ${err.message}`);
       callback?.({ text: `❌ Error: ${err.message}` });
-      return { text: `❌ Error: ${err.message}`, success: false, error: "handler_error" };
+      return {
+        text: `❌ Error: ${err.message}`,
+        success: false,
+        error: "handler_error",
+      };
     }
   },
 
@@ -277,7 +369,10 @@ Parameters: chain (string), token (string), fundingToken (string, optional), wit
       },
       {
         name: "{{agent}}",
-        content: { text: "Withdrawing USDC from Nexus Smart Account...", action: "BICONOMY_WITHDRAW" },
+        content: {
+          text: "Withdrawing USDC from Nexus Smart Account...",
+          action: "BICONOMY_WITHDRAW",
+        },
       },
     ],
   ],

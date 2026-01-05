@@ -6,7 +6,7 @@ import {
   type HandlerCallback,
   type ActionResult,
   type UUID,
-  logger
+  logger,
 } from "@elizaos/core";
 import { getEntityWallet } from "../../../utils/entity";
 import { CdpService } from "../services/cdp.service";
@@ -35,11 +35,12 @@ export const cdpWalletInfo: Action = {
   parameters: {
     chain: {
       type: "string",
-      description: "Optional blockchain network to query (e.g., 'base', 'ethereum', 'polygon', 'arbitrum', 'optimism'). If not provided, fetches data from all supported chains.",
+      description:
+        "Optional blockchain network to query (e.g., 'base', 'ethereum', 'polygon', 'arbitrum', 'optimism'). If not provided, fetches data from all supported chains.",
       required: false,
     },
   },
-  
+
   validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) => {
     return validateCdpService(_runtime, "USER_WALLET_INFO", state, message);
   },
@@ -52,21 +53,34 @@ export const cdpWalletInfo: Action = {
   ): Promise<ActionResult> => {
     try {
       logger.info("[USER_WALLET_INFO] Fetching user wallet information");
-      
+
       // Read parameters from state (extracted by multiStepDecisionTemplate)
-      const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-      const params = composedState?.data?.actionParams || {};
-      
+      const composedState = await runtime.composeState(
+        message,
+        ["ACTION_STATE"],
+        true,
+      );
+      const params = (composedState?.data?.actionParams || {}) as Record<
+        string,
+        any
+      >;
+
       // Extract chain parameter if provided
       const chain = params?.chain?.trim();
-      
+
       // Store input parameters for return
       const inputParams = chain ? { chain } : {};
 
       // Validate chain parameter if provided
-      const validChains = ['base', 'ethereum', 'polygon', 'arbitrum', 'optimism'];
+      const validChains = [
+        "base",
+        "ethereum",
+        "polygon",
+        "arbitrum",
+        "optimism",
+      ];
       if (chain && !validChains.includes(chain.toLowerCase())) {
-        const errorMsg = `Invalid chain: ${chain}. Supported chains: ${validChains.join(', ')}`;
+        const errorMsg = `Invalid chain: ${chain}. Supported chains: ${validChains.join(", ")}`;
         logger.error(`[USER_WALLET_INFO] ${errorMsg}`);
         const errorResult: ActionResult = {
           text: ` ${errorMsg}`,
@@ -74,9 +88,9 @@ export const cdpWalletInfo: Action = {
           error: "invalid_chain",
           input: inputParams,
         } as ActionResult & { input: typeof inputParams };
-        callback?.({ 
+        callback?.({
           text: errorResult.text,
-          content: { error: "invalid_chain", details: errorMsg }
+          content: { error: "invalid_chain", details: errorMsg },
         });
         return errorResult;
       }
@@ -97,46 +111,73 @@ export const cdpWalletInfo: Action = {
       }
 
       const accountName = wallet.metadata?.accountName as string;
-      
+
       // Get entity information for context
       let entityId = message.entityId;
       let entityName = "";
       try {
         const entity = await runtime.getEntityById(entityId);
         if (entity) {
-          logger.debug(`[USER_WALLET_INFO] Agent entity metadata:`, JSON.stringify(entity.metadata, null, 2));
-          logger.debug(`[USER_WALLET_INFO] Agent entity names:`, JSON.stringify(entity.names));
-          
+          logger.debug(
+            `[USER_WALLET_INFO] Agent entity metadata:`,
+            JSON.stringify(entity.metadata, null, 2),
+          );
+          logger.debug(
+            `[USER_WALLET_INFO] Agent entity names:`,
+            JSON.stringify(entity.names),
+          );
+
           // Try to get displayName from agent entity first
-          entityName = (entity.metadata?.displayName as string);
-          
+          entityName = entity.metadata?.displayName as string;
+
           // If not found, try to get the actual user entity (via author_id) which has the displayName
           if (!entityName && entity.metadata?.author_id) {
             try {
               const userEntityId = entity.metadata.author_id as UUID;
-              logger.debug(`[USER_WALLET_INFO] Fetching user entity: ${userEntityId}`);
+              logger.debug(
+                `[USER_WALLET_INFO] Fetching user entity: ${userEntityId}`,
+              );
               const userEntity = await runtime.getEntityById(userEntityId);
               if (userEntity) {
-                logger.debug(`[USER_WALLET_INFO] User entity metadata:`, JSON.stringify(userEntity.metadata, null, 2));
-                entityName = (userEntity.metadata?.displayName as string) || 
-                             (userEntity.names && userEntity.names.length > 0 ? String(userEntity.names[0]) : "");
+                logger.debug(
+                  `[USER_WALLET_INFO] User entity metadata:`,
+                  JSON.stringify(userEntity.metadata, null, 2),
+                );
+                entityName =
+                  (userEntity.metadata?.displayName as string) ||
+                  (userEntity.names && userEntity.names.length > 0
+                    ? String(userEntity.names[0])
+                    : "");
                 // Use user entity ID for consistency
                 entityId = userEntityId;
               }
             } catch (userEntityError) {
-              logger.warn("[USER_WALLET_INFO] Could not fetch user entity:", userEntityError instanceof Error ? userEntityError.message : String(userEntityError));
+              logger.warn(
+                "[USER_WALLET_INFO] Could not fetch user entity:",
+                userEntityError instanceof Error
+                  ? userEntityError.message
+                  : String(userEntityError),
+              );
             }
           }
-          
+
           // Final fallback to agent entity names
           if (!entityName) {
-            entityName = entity.names && entity.names.length > 0 ? String(entity.names[0]) : entityId;
+            entityName =
+              entity.names && entity.names.length > 0
+                ? String(entity.names[0])
+                : entityId;
           }
-          
-          logger.debug(`[USER_WALLET_INFO] Resolved entityName: ${entityName} (entityId: ${entityId})`);
+
+          logger.debug(
+            `[USER_WALLET_INFO] Resolved entityName: ${entityName} (entityId: ${entityId})`,
+          );
         }
       } catch (error) {
-        logger.warn("[USER_WALLET_INFO] Could not fetch entity name:", error instanceof Error ? error.message : String(error));
+        logger.warn(
+          "[USER_WALLET_INFO] Could not fetch entity name:",
+          error instanceof Error ? error.message : String(error),
+        );
         entityName = entityId; // Fallback to entityId if fetch fails
       }
 
@@ -149,16 +190,18 @@ export const cdpWalletInfo: Action = {
           error: "missing_account_name",
           input: inputParams,
         } as ActionResult & { input: typeof inputParams };
-        callback?.({ 
+        callback?.({
           text: errorResult.text,
-          content: { error: "missing_account_name", details: errorMsg }
+          content: { error: "missing_account_name", details: errorMsg },
         });
         return errorResult;
       }
-      
+
       // Get CDP service
-      const cdpService = runtime.getService(CdpService.serviceType) as CdpService;
-      
+      const cdpService = runtime.getService(
+        CdpService.serviceType,
+      ) as CdpService;
+
       if (!cdpService) {
         const errorMsg = "CDP service not available";
         logger.error(`[USER_WALLET_INFO] ${errorMsg}`);
@@ -168,25 +211,33 @@ export const cdpWalletInfo: Action = {
           error: "service_unavailable",
           input: inputParams,
         } as ActionResult & { input: typeof inputParams };
-        callback?.({ 
+        callback?.({
           text: errorResult.text,
-          content: { error: "service_unavailable", details: errorMsg }
+          content: { error: "service_unavailable", details: errorMsg },
         });
         return errorResult;
       }
 
       // Fetch comprehensive wallet info (always fresh data)
-      const chainInfo = chain ? ` on ${chain}` : '';
-      logger.info(`[USER_WALLET_INFO] Fetching fresh wallet info for account: ${accountName}${chainInfo}`);
+      const chainInfo = chain ? ` on ${chain}` : "";
+      logger.info(
+        `[USER_WALLET_INFO] Fetching fresh wallet info for account: ${accountName}${chainInfo}`,
+      );
       callback?.({ text: ` Fetching your wallet information${chainInfo}...` });
 
       // Pass wallet address to avoid CDP account lookup (prevents "account not initialized" errors)
-      const walletInfo = await cdpService.fetchWalletInfo(accountName, chain, wallet.walletAddress);
+      const walletInfo = await cdpService.fetchWalletInfo(
+        accountName,
+        chain,
+        wallet.walletAddress,
+      );
 
-      logger.info(`[USER_WALLET_INFO] Successfully fetched wallet info: ${walletInfo.tokens.length} tokens, ${walletInfo.nfts.length} NFTs, $${walletInfo.totalUsdValue.toFixed(2)} total value${chainInfo}`);
+      logger.info(
+        `[USER_WALLET_INFO] Successfully fetched wallet info: ${walletInfo.tokens.length} tokens, ${walletInfo.nfts.length} NFTs, $${walletInfo.totalUsdValue.toFixed(2)} total value${chainInfo}`,
+      );
 
       // Format the response
-      let text = ` **Wallet Information${chain ? ` (${chain.charAt(0).toUpperCase() + chain.slice(1)})` : ''}**\n\n`;
+      let text = ` **Wallet Information${chain ? ` (${chain.charAt(0).toUpperCase() + chain.slice(1)})` : ""}**\n\n`;
       if (entityName) {
         text += ` **Display Name:** ${entityName} (Entity ID: ${entityId})\n`;
       }
@@ -196,26 +247,28 @@ export const cdpWalletInfo: Action = {
       // Token summary
       if (walletInfo.tokens.length > 0) {
         text += ` **Tokens (${walletInfo.tokens.length}):**\n`;
-        
+
         // Group tokens by chain
-        const tokensByChain = walletInfo.tokens.reduce((acc, token) => {
-          if (!acc[token.chain]) acc[token.chain] = [];
-          acc[token.chain].push(token);
-          return acc;
-        }, {} as Record<string, typeof walletInfo.tokens>);
+        const tokensByChain = walletInfo.tokens.reduce(
+          (acc, token) => {
+            if (!acc[token.chain]) acc[token.chain] = [];
+            acc[token.chain].push(token);
+            return acc;
+          },
+          {} as Record<string, typeof walletInfo.tokens>,
+        );
 
         for (const [chain, tokens] of Object.entries(tokensByChain)) {
           text += `\n**${chain.charAt(0).toUpperCase() + chain.slice(1)}:**\n`;
-          
+
           // Sort by USD value (highest first) and show top 5 per chain
           const sortedTokens = tokens
             .sort((a, b) => b.usdValue - a.usdValue)
             .slice(0, 5);
 
           for (const token of sortedTokens) {
-            const valueStr = token.usdValue > 0 
-              ? ` ($${token.usdValue.toFixed(2)})` 
-              : '';
+            const valueStr =
+              token.usdValue > 0 ? ` ($${token.usdValue.toFixed(2)})` : "";
             text += `  • ${token.balanceFormatted} ${token.symbol}${valueStr}\n`;
           }
 
@@ -228,20 +281,23 @@ export const cdpWalletInfo: Action = {
       }
 
       // NFT summary
-      text += `\n **NFTs:** ${walletInfo.nfts.length} item${walletInfo.nfts.length !== 1 ? 's' : ''}`;
-      
+      text += `\n **NFTs:** ${walletInfo.nfts.length} item${walletInfo.nfts.length !== 1 ? "s" : ""}`;
+
       if (walletInfo.nfts.length > 0) {
         // Group NFTs by chain
-        const nftsByChain = walletInfo.nfts.reduce((acc, nft) => {
-          if (!acc[nft.chain]) acc[nft.chain] = [];
-          acc[nft.chain].push(nft);
-          return acc;
-        }, {} as Record<string, typeof walletInfo.nfts>);
+        const nftsByChain = walletInfo.nfts.reduce(
+          (acc, nft) => {
+            if (!acc[nft.chain]) acc[nft.chain] = [];
+            acc[nft.chain].push(nft);
+            return acc;
+          },
+          {} as Record<string, typeof walletInfo.nfts>,
+        );
 
-        text += '\n';
+        text += "\n";
         for (const [chain, nfts] of Object.entries(nftsByChain)) {
-          text += `\n**${chain.charAt(0).toUpperCase() + chain.slice(1)}:** ${nfts.length} NFT${nfts.length !== 1 ? 's' : ''}\n`;
-          
+          text += `\n**${chain.charAt(0).toUpperCase() + chain.slice(1)}:** ${nfts.length} NFT${nfts.length !== 1 ? "s" : ""}\n`;
+
           // Show first 3 NFTs per chain
           const displayNfts = nfts.slice(0, 3);
           for (const nft of displayNfts) {
@@ -264,22 +320,23 @@ export const cdpWalletInfo: Action = {
         ...(chain && { chain }),
       };
 
-      callback?.({ 
-        text, 
-        content: data
+      callback?.({
+        text,
+        content: data,
       });
 
-      return { 
-        text, 
-        success: true, 
+      return {
+        text,
+        success: true,
         data,
         values: data,
         input: inputParams,
       } as ActionResult & { input: typeof inputParams };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       logger.error("[USER_WALLET_INFO] Action failed:", errorMessage);
-      
+
       const errorText = ` Failed to fetch wallet info: ${errorMessage}`;
       const errorResult: ActionResult = {
         text: errorText,
@@ -287,51 +344,103 @@ export const cdpWalletInfo: Action = {
         error: errorMessage,
         input: {},
       } as ActionResult & { input: {} };
-      
-      callback?.({ 
+
+      callback?.({
         text: errorText,
-        content: { error: "action_failed", details: errorMessage }
+        content: { error: "action_failed", details: errorMessage },
       });
-      
+
       return errorResult;
     }
   },
   examples: [
     [
       { name: "{{user}}", content: { text: "show my wallet" } },
-      { name: "{{agent}}", content: { text: " Fetching your wallet information...", action: "USER_WALLET_INFO" } },
+      {
+        name: "{{agent}}",
+        content: {
+          text: " Fetching your wallet information...",
+          action: "USER_WALLET_INFO",
+        },
+      },
     ],
     [
       { name: "{{user}}", content: { text: "check my wallet balance" } },
-      { name: "{{agent}}", content: { text: " Fetching your wallet information...", action: "USER_WALLET_INFO" } },
+      {
+        name: "{{agent}}",
+        content: {
+          text: " Fetching your wallet information...",
+          action: "USER_WALLET_INFO",
+        },
+      },
     ],
     [
       { name: "{{user}}", content: { text: "what tokens do I have?" } },
-      { name: "{{agent}}", content: { text: " Fetching your wallet information...", action: "USER_WALLET_INFO" } },
+      {
+        name: "{{agent}}",
+        content: {
+          text: " Fetching your wallet information...",
+          action: "USER_WALLET_INFO",
+        },
+      },
     ],
     [
       { name: "{{user}}", content: { text: "show my NFTs" } },
-      { name: "{{agent}}", content: { text: " Fetching your wallet information...", action: "USER_WALLET_INFO" } },
+      {
+        name: "{{agent}}",
+        content: {
+          text: " Fetching your wallet information...",
+          action: "USER_WALLET_INFO",
+        },
+      },
     ],
     [
       { name: "{{user}}", content: { text: "what's in my wallet?" } },
-      { name: "{{agent}}", content: { text: " Fetching your wallet information...", action: "USER_WALLET_INFO" } },
+      {
+        name: "{{agent}}",
+        content: {
+          text: " Fetching your wallet information...",
+          action: "USER_WALLET_INFO",
+        },
+      },
     ],
     [
       { name: "{{user}}", content: { text: "show my wallet on base" } },
-      { name: "{{agent}}", content: { text: " Fetching your wallet information on base...", action: "USER_WALLET_INFO", chain: "base" } },
+      {
+        name: "{{agent}}",
+        content: {
+          text: " Fetching your wallet information on base...",
+          action: "USER_WALLET_INFO",
+          chain: "base",
+        },
+      },
     ],
     [
       { name: "{{user}}", content: { text: "check my ethereum wallet" } },
-      { name: "{{agent}}", content: { text: " Fetching your wallet information on ethereum...", action: "USER_WALLET_INFO", chain: "ethereum" } },
+      {
+        name: "{{agent}}",
+        content: {
+          text: " Fetching your wallet information on ethereum...",
+          action: "USER_WALLET_INFO",
+          chain: "ethereum",
+        },
+      },
     ],
     [
-      { name: "{{user}}", content: { text: "what tokens do I have on polygon?" } },
-      { name: "{{agent}}", content: { text: " Fetching your wallet information on polygon...", action: "USER_WALLET_INFO", chain: "polygon" } },
+      {
+        name: "{{user}}",
+        content: { text: "what tokens do I have on polygon?" },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: " Fetching your wallet information on polygon...",
+          action: "USER_WALLET_INFO",
+          chain: "polygon",
+        },
+      },
     ],
   ],
 };
 
 export default cdpWalletInfo;
-
-

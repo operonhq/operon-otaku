@@ -16,7 +16,11 @@ import { ClankerService } from "../services/clanker.service";
 import { shortenAddress } from "../utils/format";
 import { handleError } from "../utils/errors";
 import { getEntityWallet } from "../../../../utils/entity";
-import { validateClankerService, getClankerService, extractActionParams } from "../utils/actionHelpers";
+import {
+  validateClankerService,
+  getClankerService,
+  extractActionParams,
+} from "../utils/actionHelpers";
 
 // Utility function to safely serialize objects with BigInt values
 function safeStringify(obj: any): any {
@@ -43,11 +47,11 @@ function safeStringify(obj: any): any {
   return obj;
 }
 
-
 export const tokenDeployAction: Action = {
   name: "DEPLOY_TOKEN",
   similes: ["CREATE_TOKEN", "LAUNCH_TOKEN", "MINT_TOKEN"],
-  description: "Use this action when you need to deploy a new token on Base via Clanker.",
+  description:
+    "Use this action when you need to deploy a new token on Base via Clanker.",
 
   parameters: {
     name: {
@@ -57,7 +61,8 @@ export const tokenDeployAction: Action = {
     },
     symbol: {
       type: "string",
-      description: "Token symbol (e.g., 'BASE'). Will be automatically uppercased.",
+      description:
+        "Token symbol (e.g., 'BASE'). Will be automatically uppercased.",
       required: true,
     },
     tokenAdmin: {
@@ -82,12 +87,14 @@ export const tokenDeployAction: Action = {
     },
     socialMediaUrls: {
       type: "string",
-      description: "Comma-separated list of social media URLs (e.g., 'https://twitter.com/token,https://discord.gg/token'). Optional.",
+      description:
+        "Comma-separated list of social media URLs (e.g., 'https://twitter.com/token,https://discord.gg/token'). Optional.",
       required: false,
     },
     devBuy: {
       type: "string",
-      description: "Amount of ETH to spend on initial token purchase (e.g., '0.1' for 0.1 ETH). Optional.",
+      description:
+        "Amount of ETH to spend on initial token purchase (e.g., '0.1' for 0.1 ETH). Optional.",
       required: false,
     },
   },
@@ -121,8 +128,15 @@ export const tokenDeployAction: Action = {
       }
 
       // Read parameters from state (extracted by multiStepDecisionTemplate)
-      const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-      const params = composedState?.data?.actionParams || {};
+      const composedState = await runtime.composeState(
+        message,
+        ["ACTION_STATE"],
+        true,
+      );
+      const params = (composedState?.data?.actionParams || {}) as Record<
+        string,
+        any
+      >;
 
       // Store input parameters for return
       const inputParams = {
@@ -138,7 +152,8 @@ export const tokenDeployAction: Action = {
 
       // Validate required parameters
       if (!params.name?.trim()) {
-        const errorMsg = "Missing required parameter 'name'. Please specify the token name.";
+        const errorMsg =
+          "Missing required parameter 'name'. Please specify the token name.";
         logger.error(`[DEPLOY_TOKEN] ${errorMsg}`);
         const errorResult: ActionResult = {
           text: `❌ ${errorMsg}`,
@@ -146,15 +161,16 @@ export const tokenDeployAction: Action = {
           error: "missing_required_parameter",
           input: inputParams,
         } as ActionResult & { input: typeof inputParams };
-        callback?.({ 
+        callback?.({
           text: errorResult.text,
-          content: { error: "missing_required_parameter", details: errorMsg }
+          content: { error: "missing_required_parameter", details: errorMsg },
         });
         return errorResult;
       }
 
       if (!params.symbol?.trim()) {
-        const errorMsg = "Missing required parameter 'symbol'. Please specify the token symbol.";
+        const errorMsg =
+          "Missing required parameter 'symbol'. Please specify the token symbol.";
         logger.error(`[DEPLOY_TOKEN] ${errorMsg}`);
         const errorResult: ActionResult = {
           text: `❌ ${errorMsg}`,
@@ -162,9 +178,9 @@ export const tokenDeployAction: Action = {
           error: "missing_required_parameter",
           input: inputParams,
         } as ActionResult & { input: typeof inputParams };
-        callback?.({ 
+        callback?.({
           text: errorResult.text,
-          content: { error: "missing_required_parameter", details: errorMsg }
+          content: { error: "missing_required_parameter", details: errorMsg },
         });
         return errorResult;
       }
@@ -176,16 +192,24 @@ export const tokenDeployAction: Action = {
         tokenAdmin: params.tokenAdmin?.trim(),
         vanity: params.vanity === true,
         image: params.image?.trim(),
-        metadata: (params.description || params.socialMediaUrls) ? {
-          description: params.description?.trim(),
-          socialMediaUrls: params.socialMediaUrls 
-            ? params.socialMediaUrls.split(',').map((url: string) => url.trim()).filter(Boolean)
+        metadata:
+          params.description || params.socialMediaUrls
+            ? {
+                description: params.description?.trim(),
+                socialMediaUrls: params.socialMediaUrls
+                  ? params.socialMediaUrls
+                      .split(",")
+                      .map((url: string) => url.trim())
+                      .filter(Boolean)
+                  : undefined,
+                auditUrls: [],
+              }
             : undefined,
-          auditUrls: [],
-        } : undefined,
-        devBuy: params.devBuy ? {
-          ethAmount: parseFloat(params.devBuy),
-        } : undefined,
+        devBuy: params.devBuy
+          ? {
+              ethAmount: parseFloat(params.devBuy),
+            }
+          : undefined,
       };
 
       // Validate parameters
@@ -202,9 +226,9 @@ export const tokenDeployAction: Action = {
           error: "validation_failed",
           input: inputParams,
         } as ActionResult & { input: typeof inputParams };
-        callback?.({ 
+        callback?.({
           text: errorResult.text,
-          content: { error: "validation_failed", details: errorMsg }
+          content: { error: "validation_failed", details: errorMsg },
         });
         return errorResult;
       }
@@ -227,7 +251,6 @@ export const tokenDeployAction: Action = {
       }
 
       const accountName = wallet.metadata?.accountName as string;
-     
 
       const result = await clankerService.deployToken(
         {
@@ -243,7 +266,7 @@ export const tokenDeployAction: Action = {
           vault: deployParams.vault,
           devBuy: deployParams.devBuy,
         },
-        accountName
+        accountName,
       );
 
       // Prepare response
@@ -295,8 +318,15 @@ export const tokenDeployAction: Action = {
       // Try to capture input params even in failure
       let catchFailureInput = {};
       try {
-        const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-        const params = composedState?.data?.actionParams || {};
+        const composedState = await runtime.composeState(
+          message,
+          ["ACTION_STATE"],
+          true,
+        );
+        const params = (composedState?.data?.actionParams || {}) as Record<
+          string,
+          any
+        >;
         catchFailureInput = {
           name: params.name,
           symbol: params.symbol,
