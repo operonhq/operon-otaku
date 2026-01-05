@@ -160,8 +160,13 @@ export interface OpenOrder {
   tokenId: string;
   /** Market question */
   marketQuestion?: string;
-  /** Outcome */
-  outcome: "YES" | "NO";
+  /**
+   * Outcome for the order.
+   * For standard markets: "YES" or "NO"
+   * For sports/alternative markets: may be team names or other outcomes
+   * Derived from token metadata, not order side.
+   */
+  outcome: string;
   /** Side */
   side: OrderSide;
   /** Price */

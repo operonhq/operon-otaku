@@ -697,9 +697,12 @@ export class PolymarketService extends Service {
       const token2 = market.tokens[1];
 
       // Check if this is a standard Yes/No market or alternative outcome market
+      // Must have both "yes" AND "no" tokens (in either order) to be a Yes/No market
+      const token1Lower = token1.outcome.toLowerCase();
+      const token2Lower = token2.outcome.toLowerCase();
       const isYesNoMarket = 
-        token1.outcome.toLowerCase() === "yes" || 
-        token1.outcome.toLowerCase() === "no";
+        (token1Lower === "yes" && token2Lower === "no") ||
+        (token1Lower === "no" && token2Lower === "yes");
 
       // Fetch prices for both outcomes
       const [price1, price2] = await Promise.all([

@@ -12,15 +12,13 @@ import {
 } from "@elizaos/core";
 import { CdpClient, type EvmServerAccount } from "@coinbase/cdp-sdk";
 import { ClobClient, Side, OrderType } from "@polymarket/clob-client";
-import { createPublicClient, http, formatUnits, type Hex } from "viem";
-import { polygon } from "viem/chains";
+import { createPublicClient, type Hex } from "viem";
 import { CdpSignerAdapter } from "../adapters/cdp-signer-adapter";
 import type {
   TradingSetupResult,
   ApiCredentials,
   OrderParams,
   LimitOrderParams,
-  TickSize,
   OrderResult,
   OpenOrder,
   CancelOrderResult,
@@ -31,9 +29,8 @@ import type {
 import {
   POLYGON_CHAIN_ID,
   CLOB_HOST,
+  GAMMA_HOST,
   CONTRACTS,
-  ERC20_ABI,
-  USDC_DECIMALS,
   DEFAULT_MAX_TRADE_AMOUNT,
   API_CREDENTIALS_CACHE_TTL,
 } from "../constants";
@@ -45,7 +42,6 @@ import {
   approveAllPolymarketContracts,
   createPolygonPublicClient,
 } from "../utils/approvalHelpers";
-import { validateOrderParams } from "../utils/orderHelpers";
 
 /**
  * Cached user state for trading
@@ -735,7 +731,93 @@ export class PolymarketTradingService extends Service {
   }
 
   /**
+   * Look up the outcome for a token ID from the Gamma API
+   *
+   * Queries Polymarket's Gamma API to find the market containing the given token ID
+   * and returns the corresponding outcome (e.g., "Yes", "No", or alternative outcomes
+   * like team names for sports markets).
+   *
+   * @param tokenId - The ERC1155 token ID to look up
+   * @returns The outcome string (e.g., "Yes", "No", "Team A"), or null if not found
+   */
+  async getTokenOutcome(tokenId: string): Promise<string | null> {
+    try {
+      // Query Gamma API for markets containing this token
+      // The API supports clob_token_ids query parameter
+      const url = `${GAMMA_HOST}/markets?clob_token_ids=${tokenId}`;
+      logger.debug(`[PolymarketTradingService] Looking up token outcome: ${url}`);
+
+      const response = await fetch(url, {
+        headers: { Accept: "application/json" },
+      });
+
+      if (!response.ok) {
+        logger.warn(
+          `[PolymarketTradingService] Gamma API returned ${response.status} for token lookup`
+        );
+        return null;
+      }
+
+      const markets = (await response.json()) as any[];
+
+      if (!markets || markets.length === 0) {
+        logger.warn(
+          `[PolymarketTradingService] No market found for token: ${tokenId.substring(0, 20)}...`
+        );
+        return null;
+      }
+
+      const market = markets[0];
+
+      // Parse clobTokenIds and outcomes from the market data
+      let tokenIds: string[] = [];
+      let outcomes: string[] = [];
+
+      try {
+        tokenIds =
+          typeof market.clobTokenIds === "string"
+            ? JSON.parse(market.clobTokenIds)
+            : market.clobTokenIds || [];
+        outcomes =
+          typeof market.outcomes === "string"
+            ? JSON.parse(market.outcomes)
+            : market.outcomes || [];
+      } catch {
+        logger.warn(
+          `[PolymarketTradingService] Failed to parse token/outcome data for market`
+        );
+        return null;
+      }
+
+      // Find the index of our token and return the corresponding outcome
+      const tokenIndex = tokenIds.findIndex((id: string) => id === tokenId);
+
+      if (tokenIndex >= 0 && tokenIndex < outcomes.length) {
+        const outcome = outcomes[tokenIndex];
+        logger.debug(
+          `[PolymarketTradingService] Token ${tokenId.substring(0, 20)}... maps to outcome: ${outcome}`
+        );
+        return outcome;
+      }
+
+      logger.warn(
+        `[PolymarketTradingService] Token ${tokenId.substring(0, 20)}... not found in market token list`
+      );
+      return null;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error(
+        `[PolymarketTradingService] Error looking up token outcome: ${errorMsg}`
+      );
+      return null;
+    }
+  }
+
+  /**
    * Get open orders for a user
+   *
+   * Fetches all open orders and enriches them with correct outcome information
+   * by looking up token metadata from the Gamma API.
    */
   async getOpenOrders(userId: string): Promise<OpenOrder[]> {
     logger.info(
@@ -746,22 +828,52 @@ export class PolymarketTradingService extends Service {
       const client = await this.getAuthenticatedClobClient(userId);
       const orders = await client.getOpenOrders();
 
-      return orders.map((order: any) => ({
-        orderId: order.id || order.order_id,
-        conditionId: order.asset_id,
-        tokenId: order.token_id,
-        outcome: order.side === "BUY" ? "YES" : "NO", // Simplified mapping
-        side: order.side as "BUY" | "SELL",
-        price: order.price,
-        originalSize: order.original_size || order.size,
-        remainingSize: order.size_matched
-          ? String(
-              parseFloat(order.original_size || order.size) -
-                parseFloat(order.size_matched)
-            )
-          : order.size,
-        createdAt: order.timestamp || Date.now(),
-      }));
+      // Look up outcomes for all unique token IDs in parallel
+      const uniqueTokenIds = Array.from(new Set(orders.map((o: any) => o.asset_id))) as string[];
+      const outcomeMap = new Map<string, string>();
+
+      await Promise.all(
+        uniqueTokenIds.map(async (tokenId: string) => {
+          const outcome = await this.getTokenOutcome(tokenId);
+          if (outcome) {
+            outcomeMap.set(tokenId, outcome);
+          }
+        })
+      );
+
+      return orders.map((order: any) => {
+        // Get the correct outcome from token metadata
+        // asset_id in CLOB response is the token ID, not condition ID
+        const tokenId = order.asset_id;
+        const outcome = outcomeMap.get(tokenId);
+
+        // Normalize outcome to uppercase YES/NO for standard markets
+        // For alternative outcomes (e.g., team names), keep as-is
+        let normalizedOutcome: string = outcome || "UNKNOWN";
+        const lowerOutcome = outcome?.toLowerCase();
+        if (lowerOutcome === "yes") {
+          normalizedOutcome = "YES";
+        } else if (lowerOutcome === "no") {
+          normalizedOutcome = "NO";
+        }
+
+        return {
+          orderId: order.id || order.order_id,
+          conditionId: order.market || order.condition_id || tokenId, // Use market/condition_id if available
+          tokenId: tokenId,
+          outcome: normalizedOutcome,
+          side: order.side as "BUY" | "SELL",
+          price: order.price,
+          originalSize: order.original_size || order.size,
+          remainingSize: order.size_matched
+            ? String(
+                parseFloat(order.original_size || order.size) -
+                  parseFloat(order.size_matched)
+              )
+            : order.size,
+          createdAt: order.timestamp || Date.now(),
+        };
+      });
     } catch (error) {
       logger.error(
         `[PolymarketTradingService] Failed to get open orders: ${error instanceof Error ? error.message : String(error)}`
@@ -1031,7 +1143,6 @@ export class PolymarketTradingService extends Service {
       );
 
       // Call redeemPositions on the Conditional Tokens contract
-      // @ts-expect-error - Account is attached to wallet client but types don't fully infer
       const hash = await walletClient.writeContract({
         address: CONTRACTS.CONDITIONAL_TOKENS,
         abi: CONDITIONAL_TOKENS_ABI,
