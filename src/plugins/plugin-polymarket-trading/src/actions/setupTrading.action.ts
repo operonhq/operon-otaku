@@ -96,9 +96,9 @@ export const setupTradingAction: Action = {
         return wallet.result;
       }
 
-      // Use the wallet's account name (walletEntityId) as the userId for the trading service
+      // Use the wallet's accountName (cdp_user_id from user_registry) as the userId for the trading service
       // This ensures we use the same CDP account that was originally created for this entity
-      const userId = wallet.metadata?.walletEntityId || wallet.metadata?.accountName || message.entityId;
+      const userId = wallet.metadata?.accountName || wallet.metadata?.walletEntityId || message.entityId;
       if (!userId) {
         return {
           text: "Unable to identify entity for trading setup.",

@@ -80,7 +80,7 @@ export const approveUsdcAction: Action = {
       }
 
       // Use the wallet's account name (walletEntityId) as the userId for the trading service
-      const userId = wallet.metadata?.walletEntityId || wallet.metadata?.accountName || message.entityId;
+      const userId = wallet.metadata?.accountName || wallet.metadata?.walletEntityId || message.entityId;
       if (!userId) {
         return {
           text: "Unable to identify entity for approval.",

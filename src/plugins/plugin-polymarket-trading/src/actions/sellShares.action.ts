@@ -112,7 +112,7 @@ export const sellSharesAction: Action = {
       if (wallet.success === false) return wallet.result;
       
       const walletAddress = wallet.walletAddress;
-      const userId = wallet.metadata?.walletEntityId || wallet.metadata?.accountName || message.entityId;
+      const userId = wallet.metadata?.accountName || wallet.metadata?.walletEntityId || message.entityId;
       
       if (!walletAddress || !userId) {
         return { text: "Wallet not available.", success: false, error: "no_wallet" };

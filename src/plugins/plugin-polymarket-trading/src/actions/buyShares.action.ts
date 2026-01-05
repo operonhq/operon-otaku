@@ -167,7 +167,7 @@ And user wants to buy $5 of YES shares:
 
       // Use the wallet's account name (walletEntityId) as the userId for the trading service
       // This ensures we use the same CDP account that was originally created for this entity
-      const userId = wallet.metadata?.walletEntityId || wallet.metadata?.accountName || message.entityId;
+      const userId = wallet.metadata?.accountName || wallet.metadata?.walletEntityId || message.entityId;
       if (!userId) {
         return {
           text: "Unable to identify entity for trading.",
@@ -380,7 +380,10 @@ Please add more USDC to your wallet or reduce the trade amount.`,
 
       if ((orderResult.status === "FILLED" || orderResult.status === "PLACED") && orderResult.orderId) {
         const isFilled = orderResult.status === "FILLED";
-        const executedShares = orderResult.executedSize || estimatedShares;
+        // Parse executedSize to number for consistent typing (API returns string)
+        const executedShares = orderResult.executedSize 
+          ? parseFloat(orderResult.executedSize) 
+          : estimatedShares;
         const txHash = orderResult.transactionHash;
         
         logger.info(`[POLYMARKET_BUY_SHARES] Trade ${isFilled ? 'FILLED' : 'placed'}! Order ID: ${orderResult.orderId}${txHash ? `, TX: ${txHash}` : ''}`);

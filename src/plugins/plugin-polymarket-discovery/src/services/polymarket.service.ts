@@ -1207,8 +1207,9 @@ export class PolymarketService extends Service {
     const { active, closed, tag, query, slug, limit = 20, offset = 0 } = filters || {};
     logger.info(`[PolymarketService] Fetching events with filters: active=${active}, tag=${tag}, query="${query || 'none'}", slug="${slug || 'none'}", limit=${limit}`);
 
-    // Check cache (only cache if no filters, since filtered results vary)
-    if (!filters || (active === undefined && !closed && !tag && !query && !slug && offset === 0)) {
+    // Check cache - use cached base list when only query filtering is needed
+    // (query can be applied client-side to cached results)
+    if (!filters || (active === undefined && !closed && !tag && !slug && offset === 0)) {
       if (this.eventsListCache) {
         const age = Date.now() - this.eventsListCache.timestamp;
         if (age < this.eventCacheTtl) {

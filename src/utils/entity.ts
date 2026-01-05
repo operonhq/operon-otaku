@@ -85,7 +85,7 @@ export async function resolveWalletAccountName(
     logger.warn(`[${logPrefix}] No user_registry entry for entity_id=${entityId.substring(0, 8)}..., using entityId as accountName`);
     return entityId;
   } catch (error) {
-    logger.error(`[${logPrefix}] Failed to resolve wallet account name:`, error);
+    logger.error(`[${logPrefix}] Failed to resolve wallet account name:`, error instanceof Error ? error.message : String(error));
     return entityId;
   }
 }
