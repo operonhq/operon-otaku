@@ -3,19 +3,12 @@ import type { Plugin } from "@elizaos/core";
 // Services
 import { CdpService } from "./services/cdp.service";
 
-// Actions
-// import { cdpWalletBalance } from "./actions/cdp-wallet-balance";
-// import { cdpCreateWallet } from "./actions/cdp-wallet-create";
+// Actions - read-only / informational only
 import { cdpWalletInfo } from "./actions/cdp-wallet-info";
 import { cdpWalletCheckBalance } from "./actions/cdp-wallet-check-balance";
-import { cdpWalletSwap } from "./actions/cdp-wallet-swap";
-import { cdpWalletTokenTransfer } from "./actions/cdp-wallet-token-transfer";
-import { cdpWalletNftTransfer } from "./actions/cdp-wallet-nft-transfer";
 import { cdpResolveEns } from "./actions/cdp-resolve-ens";
 import { cdpTxExplorerLink } from "./actions/cdp-tx-explorer-link";
 import { cdpCheckTxConfirmation } from "./actions/cdp-check-tx-confirmation";
-// import { cdpWalletFetchWithPayment } from "./actions/cdp-wallet-fetch-with-payment";
-// import { cdpWalletUnwrap } from "./actions/cdp-wallet-unwrap";
 
 // Providers
 import { walletStateProvider } from "./providers/walletState";
@@ -27,36 +20,30 @@ export type { CdpNetwork } from "./types";
 export { shouldCdpPluginBeInContext, cdpKeywordPatterns } from "./matcher";
 
 /**
- * CDP Plugin
- * 
- * Provides Coinbase Developer Platform integration for:
- * - Wallet management (balances, tokens, NFTs)
- * - Token transfers and swaps
- * - NFT transfers
- * - x402 paid API requests (new!)
- * 
- * Actions:
- * - USER_WALLET_INFO: View wallet balances and assets
- * - CHECK_TOKEN_BALANCE: Fast balance check for specific token (optimized for transaction validation)
- * - USER_WALLET_TOKEN_TRANSFER: Transfer ERC20 tokens
- * - USER_WALLET_NFT_TRANSFER: Transfer NFTs
- * - USER_WALLET_SWAP: Swap tokens via DEX aggregators
- * - GET_TX_EXPLORER_LINK: Generate blockchain explorer links for transaction hashes
- * - CHECK_TX_CONFIRMATION: Check block confirmation status for transactions using viem
- * - FETCH_WITH_PAYMENT: Make paid requests to x402 APIs
+ * CDP Plugin (Research mode)
+ *
+ * Read-only Coinbase Developer Platform integration for:
+ * - Wallet balance checking and asset viewing
+ * - ENS resolution
+ * - Transaction explorer links and confirmation checking
+ *
+ * Execution actions (transfers, swaps, NFT transfers) are disabled.
+ * This agent is a research/analysis publisher, not an execution agent.
  */
 export const cdpPlugin: Plugin = {
   name: "cdp",
   description:
-    "Coinbase Developer Platform plugin providing authenticated EVM account creation, token transfers, NFT transfers, swaps, and x402 paid API requests via CDP SDK",
+    "Coinbase Developer Platform plugin providing wallet balance checking, ENS resolution, and transaction verification (read-only mode)",
   evaluators: [],
   providers: [walletStateProvider],
-  actions: [cdpWalletInfo, cdpWalletCheckBalance, cdpWalletTokenTransfer, cdpWalletNftTransfer, 
-    // cdpWalletSwap, 
-    cdpResolveEns, cdpTxExplorerLink, cdpCheckTxConfirmation],
+  actions: [
+    cdpWalletInfo,
+    cdpWalletCheckBalance,
+    cdpResolveEns,
+    cdpTxExplorerLink,
+    cdpCheckTxConfirmation,
+  ],
   services: [CdpService],
 };
 
 export default cdpPlugin;
-
-
