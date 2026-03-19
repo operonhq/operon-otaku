@@ -1,5 +1,4 @@
-import { useEffect, ReactNode } from 'react';
-import { useIsMobile } from '@/frontend/hooks/use-mobile';
+import { useEffect, useRef, ReactNode } from 'react';
 
 interface ModalProps {
   children: ReactNode;
@@ -18,7 +17,8 @@ export function Modal({
   showCloseButton = true,
   className = ''
 }: ModalProps) {
-  const isMobile = useIsMobile();
+  const modalRef = useRef<HTMLDivElement>(null);
+  const previouslyFocusedRef = useRef<Element | null>(null);
 
   // Handle ESC key
   useEffect(() => {
@@ -38,23 +38,76 @@ export function Modal({
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    
+
     return () => {
       document.body.style.overflow = originalOverflow;
     };
   }, []);
 
+  // Focus trap: capture previous focus, focus first element, trap Tab cycle, restore on unmount
+  useEffect(() => {
+    previouslyFocusedRef.current = document.activeElement;
+
+    const modal = modalRef.current;
+    if (!modal) return;
+
+    const focusableSelector =
+      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+    const focusableElements = modal.querySelectorAll<HTMLElement>(focusableSelector);
+    if (focusableElements.length > 0) {
+      focusableElements[0].focus();
+    } else {
+      modal.focus();
+    }
+
+    const handleTab = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      const focusables = modal.querySelectorAll<HTMLElement>(focusableSelector);
+      if (focusables.length === 0) return;
+
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleTab);
+
+    return () => {
+      document.removeEventListener('keydown', handleTab);
+      const prev = previouslyFocusedRef.current;
+      if (prev && prev instanceof HTMLElement) {
+        prev.focus();
+      }
+    };
+  }, []);
+
   const handleBackdropClick = (e: React.MouseEvent) => {
-    if (!isMobile && closeOnBackdropClick && e.target === e.currentTarget) {
+    if (closeOnBackdropClick && e.target === e.currentTarget) {
       onClose();
     }
   };
 
   return (
-    <div 
-      className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/80  p-4" 
+    <div
+      ref={modalRef}
+      className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/80  p-4"
       onClick={handleBackdropClick}
       style={{ pointerEvents: 'auto' }}
+      role="dialog"
+      aria-modal="true"
+      tabIndex={-1}
     >
       <div className={`bg-background rounded-lg w-full max-h-[90vh] p-1.5 relative ${className}`} style={{ overflow: 'visible' }}>
         {/* Close button - positioned above content with better visibility */}

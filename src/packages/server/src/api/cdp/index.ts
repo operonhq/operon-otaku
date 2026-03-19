@@ -11,7 +11,7 @@ import { MAINNET_NETWORKS, NATIVE_TOKEN_ADDRESS } from '@/constants/chains';
  * Execute a query with a fresh direct connection (bypasses pool).
  * Used as fallback when the connection pool is dead.
  */
-async function executeWithFreshConnection(sql: string): Promise<{ rows: any[] }> {
+async function executeWithFreshConnection(sql: string, params?: any[]): Promise<{ rows: any[] }> {
   const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
   if (!connectionString) {
     throw new Error('No database connection string available');
@@ -20,7 +20,7 @@ async function executeWithFreshConnection(sql: string): Promise<{ rows: any[] }>
   const client = new Client({ connectionString });
   try {
     await client.connect();
-    const result = await client.query(sql);
+    const result = await client.query(sql, params);
     return result;
   } finally {
     await client.end().catch(() => {}); // Always cleanup
@@ -57,15 +57,16 @@ function isRetryableError(error: any): boolean {
  * Handles Railway's aggressive connection proxy that closes idle connections.
  */
 async function executeWithRetry(
-  dbExecute: (sql: string) => Promise<{ rows: any[] }>,
+  dbExecute: (sql: string, params?: any[]) => Promise<{ rows: any[] }>,
   sql: string,
+  params?: any[],
   maxRetries = 2
 ): Promise<{ rows: any[] }> {
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      return await dbExecute(sql);
+      return await dbExecute(sql, params);
     } catch (error: any) {
       lastError = error;
       
@@ -80,7 +81,7 @@ async function executeWithRetry(
       if (isRetryableError(error)) {
         logger.warn('[CDP API] Pool dead after retries, attempting fresh direct connection...');
         try {
-          const result = await executeWithFreshConnection(sql);
+          const result = await executeWithFreshConnection(sql, params);
           logger.info('[CDP API] Fresh connection succeeded');
           return result;
         } catch (freshError: any) {
@@ -101,7 +102,7 @@ async function executeWithRetry(
  * Server wallets are keyed by the OLD entity_id (now stored as cdp_user_id).
  */
 async function resolveWalletAccountName(
-  dbExecute: ((sql: string) => Promise<{ rows: any[] }>) | null,
+  dbExecute: ((sql: string, params?: any[]) => Promise<{ rows: any[] }>) | null,
   entityId: string,
   logPrefix = 'CDP API'
 ): Promise<string> {
@@ -111,15 +112,10 @@ async function resolveWalletAccountName(
   }
 
   try {
-    const escapedId = entityId.replace(/'/g, "''");
-    const sql = `
-      SELECT cdp_user_id FROM user_registry 
-      WHERE entity_id = '${escapedId}'::uuid 
-      LIMIT 1
-    `;
-    
+    const sql = `SELECT cdp_user_id FROM user_registry WHERE entity_id = $1::uuid LIMIT 1`;
+
     // Use executeWithRetry for resilience against pool failures
-    const result = await executeWithRetry(dbExecute, sql);
+    const result = await executeWithRetry(dbExecute, sql, [entityId]);
 
     if (result.rows?.[0]?.cdp_user_id) {
       const cdpUserId = result.rows[0].cdp_user_id as string;
@@ -153,7 +149,7 @@ export function cdpRouter(serverInstance: AgentServer): express.Router {
   router.use(requireAuth);
 
   // Database executor for resolveWalletAccountName
-  const dbExecute = rawDb ? ((sql: string) => rawDb.execute(sql)) : null;
+  const dbExecute = rawDb ? ((sql: string, params?: any[]) => rawDb.execute(sql, params)) : null;
 
   /**
    * Helper: Get wallet address from entity metadata for GET requests
@@ -440,6 +436,18 @@ export function cdpRouter(serverInstance: AgentServer): express.Router {
         return sendError(res, 400, 'INVALID_REQUEST', 'Missing required fields: network, to, token, amount');
       }
 
+      // Validate inputs
+      if (!MAINNET_NETWORKS.includes(network)) {
+        return sendError(res, 400, 'INVALID_REQUEST', `Unsupported network: ${network}`);
+      }
+      if (!/^0x[a-fA-F0-9]{40}$/.test(to)) {
+        return sendError(res, 400, 'INVALID_REQUEST', 'Invalid recipient address format');
+      }
+      const parsedAmount = Number(amount);
+      if (isNaN(parsedAmount) || parsedAmount <= 0 || !isFinite(parsedAmount)) {
+        return sendError(res, 400, 'INVALID_REQUEST', 'Amount must be a positive number');
+      }
+
       // Resolve entity_id to cdp_user_id for CDP wallet operations
       const accountName = await resolveWalletAccountName(dbExecute, userId, 'CDP API');
       const result = await cdpTransactionManager.sendToken({
@@ -699,6 +707,19 @@ export function cdpRouter(serverInstance: AgentServer): express.Router {
 
       if (!network || !fromToken || !toToken || !fromAmount || slippageBps === undefined) {
         return sendError(res, 400, 'INVALID_REQUEST', 'Missing required fields: network, fromToken, toToken, fromAmount, slippageBps');
+      }
+
+      // Validate inputs
+      if (!MAINNET_NETWORKS.includes(network)) {
+        return sendError(res, 400, 'INVALID_REQUEST', `Unsupported network: ${network}`);
+      }
+      const parsedSlippage = Number(slippageBps);
+      if (isNaN(parsedSlippage) || parsedSlippage < 0 || parsedSlippage > 10000) {
+        return sendError(res, 400, 'INVALID_REQUEST', 'slippageBps must be between 0 and 10000');
+      }
+      const parsedFromAmount = Number(fromAmount);
+      if (isNaN(parsedFromAmount) || parsedFromAmount <= 0 || !isFinite(parsedFromAmount)) {
+        return sendError(res, 400, 'INVALID_REQUEST', 'fromAmount must be a positive number');
       }
 
       // Resolve token symbols/addresses to proper addresses (same logic as action handler)

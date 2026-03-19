@@ -107,15 +107,16 @@ export function SendModalContent({ tokens, userId, onSuccess }: SendModalContent
       showLoading('Sending Transaction', 'Please wait while we process your transaction...', modalId);
       
       const amountNum = parseFloat(amount);
-      
+
       // Validate amount is a valid number
       if (isNaN(amountNum) || !isFinite(amountNum)) {
         throw new Error('Invalid amount');
       }
-      
-      // Convert amount to base units (wei/smallest unit) - avoid scientific notation
-      const multiplier = Math.pow(10, selectedToken.decimals);
-      const amountInBaseUnits = BigInt(Math.floor(amountNum * multiplier)).toString();
+
+      // Convert amount to base units using string manipulation (avoids floating-point precision loss)
+      const [intPart, decPart = ''] = amount.split('.');
+      const paddedDecPart = decPart.padEnd(selectedToken.decimals, '0').slice(0, selectedToken.decimals);
+      let amountInBaseUnits = (intPart + paddedDecPart).replace(/^0+/, '') || '0';
 
       // Determine token parameter
       let tokenParam: string;

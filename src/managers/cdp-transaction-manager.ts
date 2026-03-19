@@ -121,6 +121,10 @@ export class CdpTransactionManager {
   private nftsCache = new Map<string, CacheEntry<any>>();
   private iconCache = new Map<string, string | null>(); // Global icon cache: contractAddress -> iconUrl (null = no icon)
   private readonly CACHE_TTL = 300 * 1000; // 5 minutes
+  private readonly MAX_ICON_CACHE_SIZE = 1000;
+
+  // Per-user transaction locks to prevent concurrent transactions
+  private transactionLocks = new Map<string, Promise<any>>();
 
   // Private constructor to prevent direct instantiation
   private constructor() {
@@ -216,6 +220,11 @@ export class CdpTransactionManager {
       return;
     }
     // Store even if icon is null/undefined to prevent refetching
+    // Evict oldest entries if cache is too large
+    if (this.iconCache.size >= this.MAX_ICON_CACHE_SIZE) {
+      const firstKey = this.iconCache.keys().next().value;
+      if (firstKey !== undefined) this.iconCache.delete(firstKey);
+    }
     this.iconCache.set(contractAddress.toLowerCase(), icon || null);
   }
 
@@ -1300,6 +1309,33 @@ export class CdpTransactionManager {
   }
 
   // ============================================================================
+  // Transaction Locking
+  // ============================================================================
+
+  /**
+   * Execute a function with a per-user lock to prevent concurrent transactions.
+   * Queues transactions for the same user sequentially.
+   */
+  private async withUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+    const existingLock = this.transactionLocks.get(userId) || Promise.resolve();
+
+    let resolve: () => void;
+    const newLock = new Promise<void>(r => { resolve = r; });
+    this.transactionLocks.set(userId, newLock);
+
+    try {
+      await existingLock; // Wait for any existing transaction to complete
+      return await fn();
+    } finally {
+      resolve!();
+      // Clean up if this is still the latest lock
+      if (this.transactionLocks.get(userId) === newLock) {
+        this.transactionLocks.delete(userId);
+      }
+    }
+  }
+
+  // ============================================================================
   // Send Operations
   // ============================================================================
 
@@ -1310,6 +1346,7 @@ export class CdpTransactionManager {
     token: string;
     amount: string;
   }): Promise<SendResult> {
+    return this.withUserLock(params.userId, async () => {
     const { userId, network, to, token, amount } = params;
 
     logger.info(
@@ -1446,6 +1483,7 @@ export class CdpTransactionManager {
       network,
       method: cdpSuccess ? "cdp-sdk" : "viem-fallback",
     };
+    });
   }
 
   async sendNFT(params: {
@@ -1455,6 +1493,7 @@ export class CdpTransactionManager {
     contractAddress: string;
     tokenId: string;
   }): Promise<SendNFTResult> {
+    return this.withUserLock(params.userId, async () => {
     const { userId, network, to, contractAddress, tokenId } = params;
 
     logger.info(
@@ -1528,6 +1567,7 @@ export class CdpTransactionManager {
       tokenId,
       network,
     };
+    });
   }
 
   // ============================================================================
@@ -1833,6 +1873,7 @@ export class CdpTransactionManager {
     fromAmount: string;
     slippageBps: number;
   }): Promise<SwapResult> {
+    return this.withUserLock(params.userId, async () => {
     const { userId, network, fromToken, toToken, fromAmount, slippageBps } =
       params;
 
@@ -2089,9 +2130,10 @@ export class CdpTransactionManager {
             },
           ] as const;
 
-          // Approve max uint256 for Permit2
+          // Approve 2x swap amount for Permit2 (buffer for price movement)
+          const swapAmountInWei = BigInt(fromAmount);
           logger.info(
-            `[CdpTransactionManager] Sending Permit2 approval transaction for ${normalizedFromToken}...`,
+            `[CdpTransactionManager] Sending Permit2 approval transaction for ${normalizedFromToken} (amount: ${swapAmountInWei * 2n})...`,
           );
           const approvalHash = await walletClient.writeContract({
             address: normalizedFromToken as `0x${string}`,
@@ -2099,9 +2141,7 @@ export class CdpTransactionManager {
             functionName: "approve",
             args: [
               PERMIT2_ADDRESS,
-              BigInt(
-                "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-              ),
+              swapAmountInWei * 2n, // Approve 2x swap amount for price movement buffer
             ],
             chain: walletClient.chain,
           } as any);
@@ -2243,6 +2283,7 @@ export class CdpTransactionManager {
       network,
       method,
     };
+    });
   }
 
   // ============================================================================
@@ -2264,26 +2305,17 @@ export class CdpTransactionManager {
   ): Promise<any> {
     const chain = getViemChain(network);
     if (!chain) {
-      logger.warn(
-        `[CdpTransactionManager] Cannot verify transaction on unsupported network: ${network}`,
-      );
-      return null;
+      throw new Error(`Cannot verify transaction: unsupported network ${network}`);
     }
 
     const alchemyKey = process.env.ALCHEMY_API_KEY;
     if (!alchemyKey) {
-      logger.warn(
-        `[CdpTransactionManager] Cannot verify transaction: Alchemy API key not configured`,
-      );
-      return null;
+      throw new Error('Cannot verify transaction: Alchemy API key not configured');
     }
 
     const rpcUrl = getRpcUrl(network, alchemyKey);
     if (!rpcUrl) {
-      logger.warn(
-        `[CdpTransactionManager] Cannot verify transaction: Could not get RPC URL for network: ${network}`,
-      );
-      return null;
+      throw new Error(`Cannot verify transaction: could not get RPC URL for network ${network}`);
     }
 
     const publicClient = createPublicClient({

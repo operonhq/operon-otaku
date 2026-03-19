@@ -469,7 +469,11 @@ export const CDPWalletCard = forwardRef<CDPWalletCardRef, CDPWalletCardProps>(
             // Fallback to circle with first letter if image fails to load
             const parent = e.currentTarget.parentElement;
             if (parent) {
-              parent.innerHTML = `<span class="text-xs sm:text-sm font-bold text-muted-foreground uppercase">${token.symbol.charAt(0)}</span>`;
+              parent.textContent = '';
+              const span = document.createElement('span');
+              span.className = 'text-xs sm:text-sm font-bold text-muted-foreground uppercase';
+              span.textContent = token.symbol.charAt(0);
+              parent.appendChild(span);
             }
           }}
         />
@@ -509,7 +513,11 @@ export const CDPWalletCard = forwardRef<CDPWalletCardRef, CDPWalletCardProps>(
             // Fallback to circle with first letter if image fails to load
             const parent = e.currentTarget.parentElement;
             if (parent) {
-              parent.innerHTML = `<span class="text-xs sm:text-sm font-bold text-muted-foreground uppercase">${tx.asset.charAt(0)}</span>`;
+              parent.textContent = '';
+              const span = document.createElement('span');
+              span.className = 'text-xs sm:text-sm font-bold text-muted-foreground uppercase';
+              span.textContent = tx.asset.charAt(0);
+              parent.appendChild(span);
             }
           }}
         />

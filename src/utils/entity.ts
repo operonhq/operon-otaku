@@ -21,20 +21,13 @@ export interface EntityWalletError {
 export type EntityWalletResponse = EntityWalletResult | EntityWalletError;
 
 // Type for database executor function
-type DbExecutor = (sql: string) => Promise<{ rows: any[] }>;
-
-/**
- * Escape string for SQL to prevent injection
- */
-export function escapeSql(str: string): string {
-  return str.replace(/'/g, "''");
-}
+type DbExecutor = (sql: string, params?: any[]) => Promise<{ rows: any[] }>;
 
 /**
  * Execute a query with a fresh direct connection.
  * Used to reliably query user_registry for CDP account resolution.
  */
-async function executeWithDirectConnection(sql: string): Promise<{ rows: any[] }> {
+async function executeWithDirectConnection(sql: string, params?: any[]): Promise<{ rows: any[] }> {
   const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
   if (!connectionString) {
     throw new Error('No database connection string available');
@@ -43,7 +36,7 @@ async function executeWithDirectConnection(sql: string): Promise<{ rows: any[] }
   const client = new Client({ connectionString });
   try {
     await client.connect();
-    const result = await client.query(sql);
+    const result = await client.query(sql, params);
     return result;
   } finally {
     await client.end().catch(() => {}); // Always cleanup
@@ -70,11 +63,10 @@ export async function resolveWalletAccountName(
   const executor = dbExecute ?? executeWithDirectConnection;
 
   try {
-    const result = await executor(`
-      SELECT cdp_user_id FROM user_registry 
-      WHERE entity_id = '${escapeSql(entityId)}'::uuid 
-      LIMIT 1
-    `);
+    const result = await executor(
+      `SELECT cdp_user_id FROM user_registry WHERE entity_id = $1::uuid LIMIT 1`,
+      [entityId]
+    );
 
     if (result.rows?.[0]?.cdp_user_id) {
       const cdpUserId = result.rows[0].cdp_user_id as string;
