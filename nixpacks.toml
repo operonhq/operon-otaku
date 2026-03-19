@@ -8,4 +8,4 @@ cmds = ["pnpm i --frozen-lockfile"]
 cmds = ["turbo run build && bun build.ts"]
 
 [start]
-cmd = "tsx start-server.ts"
+cmd = "bun run start-server.ts"
