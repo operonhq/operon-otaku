@@ -95,6 +95,7 @@ async function build() {
             '@elizaos/plugin-sql',
             '@elizaos/plugin-telegram',
             '@elizaos/server',
+            '@operon/plugin-publisher-sdk',
             'telegraf',
             'zod',
           ],
