@@ -664,7 +664,7 @@ export const relayBridgeAction: Action = {
       );
       const response: ActionResult = {
         text: responseText,
-        success: true,
+        success: status?.status === "success",
         data: serializeBigInt({
           requestId: actualRequestId,
           status,

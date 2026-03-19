@@ -372,10 +372,13 @@ export async function getTokenDecimals(
     return metadata.decimals;
   }
 
-  // Fallback for common tokens
+  // Fallback for common tokens with non-18 decimals
   const lowerSymbol = metadata?.symbol?.toLowerCase();
-  if (lowerSymbol === "usdc" || lowerSymbol === "usdt") {
-    return 6;
+  const knownDecimals: Record<string, number> = {
+    usdc: 6, usdt: 6, gusd: 2, wbtc: 8, renbtc: 8,
+  };
+  if (lowerSymbol && knownDecimals[lowerSymbol] !== undefined) {
+    return knownDecimals[lowerSymbol];
   }
 
   // Default to 18 (most ERC20 tokens use 18 decimals)
