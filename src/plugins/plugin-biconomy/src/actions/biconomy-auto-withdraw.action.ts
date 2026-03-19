@@ -276,11 +276,12 @@ async function getMinAmountInUsd(
   // Formula: tokens = $0.25 / price_per_token
   const tokensNeeded = MIN_USD_VALUE / usdPrice;
   const minAmount = parseUnits(tokensNeeded.toFixed(Math.min(decimals, 18)), decimals);
-  
+
   logger.debug(`[BICONOMY_AUTO_WITHDRAW] ${symbol} price: $${usdPrice}, need ${tokensNeeded} tokens for $${MIN_USD_VALUE}`);
-  
+
   return {
-    minAmount,
+    // Guard: if precision loss rounds to zero, use 1 wei so any-balance doesn't auto-pass
+    minAmount: minAmount > 0n ? minAmount : 1n,
     usdValue: MIN_USD_VALUE,
   };
 }
@@ -605,9 +606,18 @@ No parameters needed - fully automatic!`,
               fundingAmountPerChain = tokensForUsd.toFixed(Math.min(fundingDecimals, 18));
               logger.info(`[BICONOMY_AUTO_WITHDRAW] Funding: $${DEFAULT_FUNDING_USD} ≈ ${fundingAmountPerChain} ${fundingTokenInfo.symbol.toUpperCase()} at $${fundingPrice}`);
             } else {
-              // Fallback for stablecoins where price lookup may fail
+              // Only safe to fall back to raw "2" for stablecoins (~$2). For non-stablecoins
+              // (WETH, WPOL, etc.) "2" tokens could be thousands of dollars — skip the chain.
+              const STABLECOIN_SYMBOLS = ["usdc", "usdt", "dai", "usdce", "usdc.e"];
+              if (!STABLECOIN_SYMBOLS.includes(fundingTokenInfo.symbol.toLowerCase())) {
+                const errorMsg = `Cannot determine price for ${fundingTokenInfo.symbol.toUpperCase()} — skipping to avoid overfunding`;
+                logger.warn(`[BICONOMY_AUTO_WITHDRAW] ${errorMsg}`);
+                callback?.({ text: `⚠️ Skipping ${chainName}: ${errorMsg}` });
+                failedWithdrawals.push({ chainName, error: errorMsg });
+                continue;
+              }
               fundingAmountPerChain = "2";
-              logger.info(`[BICONOMY_AUTO_WITHDRAW] Funding: using fallback ${fundingAmountPerChain} ${fundingTokenInfo.symbol.toUpperCase()} (no price data)`);
+              logger.info(`[BICONOMY_AUTO_WITHDRAW] Funding: using fallback ${fundingAmountPerChain} ${fundingTokenInfo.symbol.toUpperCase()} (stablecoin, no price needed)`);
             }
           }
 
