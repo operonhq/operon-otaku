@@ -486,7 +486,7 @@ export class OtakuMessageService implements IMessageService {
       // Compose initial state
       let state = await runtime.composeState(
         message,
-        ['ANXIETY', 'SHOULD_RESPOND', 'ENTITIES', 'CHARACTER', 'RECENT_MESSAGES', 'ACTIONS'],
+        ['ANXIETY', 'SHOULD_RESPOND', 'ENTITIES', 'CHARACTER', 'RECENT_MESSAGES', 'ACTIONS', 'PROVIDERS'],
         true
       );
 
@@ -936,7 +936,7 @@ export class OtakuMessageService implements IMessageService {
     }
 
     // Generate summary
-    accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
+    accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE', 'PROVIDERS']);
     const summaryPrompt = composePromptFromState({
       state: accumulatedState,
       template: runtime.character.templates?.multiStepSummaryTemplate || multiStepSummaryTemplate,
