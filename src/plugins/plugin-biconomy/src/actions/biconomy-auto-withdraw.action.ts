@@ -402,7 +402,7 @@ No parameters needed - fully automatic!`,
   parameters: {
     fundingAmount: {
       type: "string",
-      description: "Amount of funding token to use per chain for orchestration fees (e.g., '2'). System will auto-find USDC/USDT/DAI. Default: 2",
+      description: "Amount of funding token to use per chain for orchestration fees (e.g., '2'). System will auto-find USDC/USDT/DAI. Default: $2 USD worth of the auto-selected token.",
       required: false,
     },
     withdrawAddress: {
@@ -443,7 +443,7 @@ No parameters needed - fully automatic!`,
       const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
       const params = (composedState?.data?.actionParams || {}) as any;
 
-      const fundingAmountPerChain = (params?.fundingAmount?.trim() || "2") as string;
+      const fundingAmountParam = params?.fundingAmount?.trim() as string | undefined;
       const withdrawAddressParam = params?.withdrawAddress?.trim() as string | undefined;
 
       callback?.({ text: "🔍 Starting auto-withdrawal scan across all chains..." });
@@ -592,8 +592,27 @@ No parameters needed - fully automatic!`,
             continue;
           }
           
+          // Calculate funding amount: use explicit param or default to $2 USD worth
+          const fundingDecimals = await getTokenDecimals(fundingTokenInfo.address, chainName);
+          let fundingAmountPerChain: string;
+          if (fundingAmountParam) {
+            fundingAmountPerChain = fundingAmountParam;
+          } else {
+            const DEFAULT_FUNDING_USD = 2;
+            const fundingPrice = await getTokenUsdPrice(fundingTokenInfo.address, chainName);
+            if (fundingPrice && fundingPrice > 0) {
+              const tokensForUsd = DEFAULT_FUNDING_USD / fundingPrice;
+              fundingAmountPerChain = tokensForUsd.toFixed(Math.min(fundingDecimals, 18));
+              logger.info(`[BICONOMY_AUTO_WITHDRAW] Funding: $${DEFAULT_FUNDING_USD} ≈ ${fundingAmountPerChain} ${fundingTokenInfo.symbol.toUpperCase()} at $${fundingPrice}`);
+            } else {
+              // Fallback for stablecoins where price lookup may fail
+              fundingAmountPerChain = "2";
+              logger.info(`[BICONOMY_AUTO_WITHDRAW] Funding: using fallback ${fundingAmountPerChain} ${fundingTokenInfo.symbol.toUpperCase()} (no price data)`);
+            }
+          }
+
           callback?.({ text: `✅ Using ${fundingAmountPerChain} ${fundingTokenInfo.symbol.toUpperCase()} from ${chainName}` });
-          
+
           // Build withdrawal flows for all tokens on this chain
           const withdrawalFlows: ComposeFlow[] = [];
           for (const balance of balances) {
@@ -619,9 +638,7 @@ No parameters needed - fully automatic!`,
               withdrawalFlows.push(flow);
             }
           }
-          
-          // Get funding token decimals and amount
-          const fundingDecimals = await getTokenDecimals(fundingTokenInfo.address, chainName);
+
           const fundingAmountWei = parseUnits(fundingAmountPerChain, fundingDecimals);
 
           // Build quote request with same-chain funding
