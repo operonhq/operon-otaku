@@ -27,9 +27,7 @@ const initCharacter = ({ runtime }: { runtime: IAgentRuntime }) => {
   // Log MCP configuration status
   const nansenKey = process.env.NANSEN_API_KEY;
   if (nansenKey) {
-    logger.info(
-      `NANSEN_API_KEY found (length: ${nansenKey.length}, prefix: ${nansenKey.substring(0, 4)}...)`,
-    );
+    logger.info(`NANSEN_API_KEY found (length: ${nansenKey.length})`);
   } else {
     logger.warn(
       "NANSEN_API_KEY not found - Nansen MCP server will fail to connect",

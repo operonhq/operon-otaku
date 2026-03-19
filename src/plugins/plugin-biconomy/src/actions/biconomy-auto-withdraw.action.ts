@@ -7,7 +7,7 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import { parseUnits, type PublicClient, formatUnits } from "viem";
+import { parseUnits, type PublicClient, formatUnits, isAddress } from "viem";
 import { getEntityWallet } from "../../../../utils/entity";
 import { CdpService } from "../../../plugin-cdp/services/cdp.service";
 import { CdpNetwork } from "../../../plugin-cdp/types";
@@ -275,7 +275,7 @@ async function getMinAmountInUsd(
   // Calculate how many tokens needed for $0.25
   // Formula: tokens = $0.25 / price_per_token
   const tokensNeeded = MIN_USD_VALUE / usdPrice;
-  const minAmount = parseUnits(tokensNeeded.toFixed(decimals), decimals);
+  const minAmount = parseUnits(tokensNeeded.toFixed(Math.min(decimals, 18)), decimals);
   
   logger.debug(`[BICONOMY_AUTO_WITHDRAW] ${symbol} price: $${usdPrice}, need ${tokensNeeded} tokens for $${MIN_USD_VALUE}`);
   
@@ -467,6 +467,11 @@ No parameters needed - fully automatic!`,
         network: defaultCdpNetwork,
       });
       const userAddress = defaultViemClient.address as `0x${string}`;
+      // Validate withdraw address if provided
+      if (withdrawAddressParam && !isAddress(withdrawAddressParam)) {
+        callback?.({ text: "❌ Invalid withdraw address. Must be a valid Ethereum address." });
+        return { text: "❌ Invalid withdraw address", success: false, error: "invalid_address" };
+      }
       const withdrawAddress = (withdrawAddressParam || userAddress) as `0x${string}`;
 
       logger.info(`[BICONOMY_AUTO_WITHDRAW] User address: ${userAddress}, Withdraw to: ${withdrawAddress}`);

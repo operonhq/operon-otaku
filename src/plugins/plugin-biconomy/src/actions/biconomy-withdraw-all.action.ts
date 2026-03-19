@@ -7,7 +7,7 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import { parseUnits, type PublicClient } from "viem";
+import { parseUnits, type PublicClient, isAddress } from "viem";
 import { getEntityWallet } from "../../../../utils/entity";
 import { CdpService } from "../../../plugin-cdp/services/cdp.service";
 import { CdpNetwork } from "../../../plugin-cdp/types";
@@ -274,7 +274,11 @@ Parameters: chain, token, amount (required for native tokens), fundingAmount (op
       const walletClient = viemClient.walletClient;
       const publicClient = viemClient.publicClient;
 
-      // Determine withdraw address (default to user's EOA)
+      // Validate and determine withdraw address (default to user's EOA)
+      if (withdrawAddressParam && !isAddress(withdrawAddressParam)) {
+        callback?.({ text: "❌ Invalid withdraw address. Must be a valid Ethereum address." });
+        return { text: "❌ Invalid withdraw address", success: false, error: "invalid_address" };
+      }
       const withdrawAddress = (withdrawAddressParam || userAddress) as `0x${string}`;
 
       // Resolve token address - use Biconomy resolver (handles native tokens)

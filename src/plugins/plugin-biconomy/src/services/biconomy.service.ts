@@ -41,6 +41,7 @@ const EXPLORER_URL = "https://meescan.biconomy.io";
 const BPS_DENOMINATOR = 10_000n;
 const FUNDING_RETRY_INCREMENT_BPS = 250n; // +2.5% per retry
 const FUNDING_RETRY_MAX_ATTEMPTS = 3;
+const FETCH_TIMEOUT_MS = 30_000; // 30 second timeout for API calls
 
 type HttpResponse = {
   ok: boolean;
@@ -131,6 +132,7 @@ export class BiconomyService extends Service {
           ...(this.apiKey && { "X-API-Key": this.apiKey }),
         },
         body: JSON.stringify(request),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       })) as HttpResponse;
 
       if (!response.ok) {
@@ -445,6 +447,7 @@ export class BiconomyService extends Service {
           ...(this.apiKey && { "X-API-Key": this.apiKey }),
         },
         body: JSON.stringify(executeRequest),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       })) as HttpResponse;
 
       if (!response.ok) {
@@ -491,6 +494,7 @@ export class BiconomyService extends Service {
             "Content-Type": "application/json",
             ...(this.apiKey && { "X-API-Key": this.apiKey }),
           },
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
         },
       )) as HttpResponse;
 
@@ -732,6 +736,7 @@ export class BiconomyService extends Service {
             ...(this.apiKey && { "X-API-Key": this.apiKey }),
           },
           body: JSON.stringify({ ownerAddress }),
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
         },
       ) as HttpResponse;
 

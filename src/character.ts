@@ -17,7 +17,6 @@ export const character: Character = {
             "https://mcp.nansen.ai/ra/mcp/",
             "--header",
             `NANSEN-API-KEY:${process.env.NANSEN_API_KEY}`,
-            "--allow-http",
           ],
         },
       },
