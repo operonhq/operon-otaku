@@ -5,23 +5,23 @@
   "type": "module",
   "main": "dist/src/index.js",
   "imports": {
-    "@/managers/*": "./dist/managers/*.js",
-    "@/constants/*": "./dist/constants/*.js"
+    "#managers/*": "./dist/managers/*.js",
+    "#constants/*": "./dist/constants/*.js"
   },
   "scripts": {
-    "dev": "turbo run build && bun run start-server.ts",
+    "dev": "turbo run build && bun run build.ts && tsx start-server.ts",
     "dev:watch": "turbo run dev --parallel",
-    "prestart": "bun run scripts/setup-pg-cron.ts || true",
-    "start": "bun run scripts/patch-plugin-sql.ts && bun run start-server.ts",
-    "postinstall": "bun run scripts/patch-plugin-sql.ts || true",
-    "build": "turbo run build && bun run build:backend && bun run build:frontend",
+    "prestart": "tsx scripts/setup-pg-cron.ts || exit 0",
+    "start": "tsx scripts/patch-plugin-sql.ts && tsx start-server.ts",
+    "postinstall": "tsx scripts/patch-plugin-sql.ts || exit 0",
+    "build": "turbo run build && tsx build.ts && vite build",
     "build:all": "turbo run build",
     "build:backend": "bun run build.ts",
     "build:frontend": "vite build",
     "type-check": "tsc --noEmit",
     "clean": "rm -rf .eliza node_modules dist .turbo bun.lockb && find src -type d -name node_modules -exec rm -rf {} + 2>/dev/null || true && find src -type d -name dist -exec rm -rf {} + 2>/dev/null || true"
   },
-  "packageManager": "bun@1.2.21",
+  "packageManager": "pnpm@10.18.3",
   "workspaces": [
     "src/packages/*"
   ],
@@ -35,10 +35,11 @@
     "@elizaos/core": "1.7.0",
     "@elizaos/plugin-analytics": "1.0.1",
     "@elizaos/plugin-anthropic": "1.5.12",
-    "@elizaos/plugin-mcp": "latest",
+    "@elizaos/plugin-mcp": "1.7.0",
     "@elizaos/plugin-openai": "1.6.0",
     "@elizaos/plugin-openrouter": "1.5.17",
     "@elizaos/plugin-sql": "1.7.0",
+    "@elizaos/plugin-telegram": "1.6.4",
     "@elizaos/server": "workspace:*",
     "@morpho-org/blue-sdk": "4.13.1",
     "@morpho-org/blue-sdk-viem": "3.2.0",

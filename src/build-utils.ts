@@ -54,17 +54,16 @@ export function getTimer() {
 
 /**
  * Creates a path alias resolver plugin for Bun.build
- * Resolves @/ paths to be external imports that will be resolved at runtime
+ * No-op: Bun natively resolves @/ paths via tsconfig "paths" and bundles them inline.
+ * Previously this marked @/ imports as external, but Node.js cannot resolve @/ aliases
+ * at runtime (its "imports" field requires # prefix), so we let Bun bundle them instead.
  */
 export function createPathAliasPlugin(rootDir: string): BunPlugin {
   return {
     name: 'path-alias-resolver',
-    setup(build) {
-      build.onResolve({ filter: /^@\// }, (args) => {
-        // Leave the import as-is but mark it as external
-        // The package.json "imports" field will resolve it at runtime
-        return { path: args.path, external: true };
-      });
+    setup(_build) {
+      // Intentionally empty - Bun resolves @/ paths via tsconfig paths natively.
+      // Do NOT mark these as external; they must be bundled for Node.js compatibility.
     },
   };
 }

@@ -18,6 +18,7 @@ import openrouterPlugin from "@elizaos/plugin-openrouter";
 import mcpPlugin from "@elizaos/plugin-mcp";
 import gamificationPlugin from "./plugins/plugin-gamification/src/index.ts";
 import polymarketDiscoveryPlugin from "./plugins/plugin-polymarket-discovery/src/index.ts";
+import telegramPlugin from "@elizaos/plugin-telegram";
 import operonPublisherPlugin from "@operon/plugin-publisher-sdk";
 
 const initCharacter = ({ runtime }: { runtime: IAgentRuntime }) => {
@@ -53,6 +54,7 @@ export const projectAgent: ProjectAgent = {
     gamificationPlugin,
     polymarketDiscoveryPlugin,
     operonPublisherPlugin,
+    telegramPlugin,
   ],
 };
 

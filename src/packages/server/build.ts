@@ -27,8 +27,6 @@ const run = createBuildRunner({
       'vectordb',
       'socket.io',
       'discord.js',
-      '@/managers/*',
-      '@/constants/*',
     ],
     sourcemap: false,
     minify: false,

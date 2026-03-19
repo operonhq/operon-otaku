@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env tsx
 /**
  * Patches @elizaos/plugin-sql to fix SET LOCAL parameterization bug.
  *
@@ -13,7 +13,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
-const PLUGIN_SQL_PATH = join(import.meta.dir, '../node_modules/@elizaos/plugin-sql/dist/node/index.node.js');
+const PLUGIN_SQL_PATH = join(new URL('.', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1'), '../node_modules/@elizaos/plugin-sql/dist/node/index.node.js');
 
 const PATCHES = [
   {

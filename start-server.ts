@@ -5,7 +5,7 @@
 
 import { AgentServer, loadCharacters } from '@elizaos/server';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -23,7 +23,7 @@ async function main() {
   const projectPath = path.resolve(__dirname, 'dist/index.js');
   console.log(`Loading project from: ${projectPath}`);
   
-  const project = await import(projectPath);
+  const project = await import(pathToFileURL(projectPath).href);
   const projectModule = project.default || project;
   
   if (projectModule.agents && Array.isArray(projectModule.agents)) {

@@ -99,20 +99,10 @@ async function build() {
           naming: {
             entry: '[dir]/[name].[ext]',
           },
-          // Add path resolution plugin to handle @/ aliases
-          plugins: [
-            {
-              name: 'path-alias-resolver',
-              setup(build) {
-                build.onResolve({ filter: /^@\// }, (args) => {
-                  // Make these imports external and rewrite them to relative paths from dist/
-                  const relativePath = args.path.slice(2); // Remove "@/"
-                  // Return as external with the rewritten path
-                  return { path: `./${relativePath}.js`, external: true };
-                });
-              },
-            },
-          ],
+          // No path alias plugin needed - Bun resolves @/ paths via tsconfig "paths"
+          // and bundles them inline. Previously they were marked external, but Node.js
+          // cannot resolve @/ aliases at runtime.
+          plugins: [],
         });
 
         if (!result.success) {
