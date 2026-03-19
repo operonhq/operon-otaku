@@ -93,7 +93,9 @@ async function build() {
             '@elizaos/core',
             '@elizaos/plugin-bootstrap',
             '@elizaos/plugin-sql',
+            '@elizaos/plugin-telegram',
             '@elizaos/server',
+            'telegraf',
             'zod',
           ],
           naming: {
