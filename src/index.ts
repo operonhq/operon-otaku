@@ -14,7 +14,7 @@ import webSearchPlugin from "./plugins/plugin-web-search/src/index.ts";
 import defiLlamaPlugin from "./plugins/plugin-defillama/src/index.ts";
 import etherscanPlugin from "./plugins/plugin-etherscan/src/index.ts";
 import analyticsPlugin from "@elizaos/plugin-analytics";
-import openrouterPlugin from "@elizaos/plugin-openrouter";
+// import openrouterPlugin from "@elizaos/plugin-openrouter";
 import mcpPlugin from "@elizaos/plugin-mcp";
 import gamificationPlugin from "./plugins/plugin-gamification/src/index.ts";
 import polymarketDiscoveryPlugin from "./plugins/plugin-polymarket-discovery/src/index.ts";
@@ -42,7 +42,6 @@ export const projectAgent: ProjectAgent = {
   plugins: [
     sqlPlugin,
     bootstrapPlugin,
-    openrouterPlugin,
     openaiPlugin,
     cdpPlugin,
     coingeckoPlugin,
