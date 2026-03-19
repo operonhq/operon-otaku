@@ -14,7 +14,7 @@
     "prestart": "tsx scripts/setup-pg-cron.ts || exit 0",
     "start": "tsx scripts/patch-plugin-sql.ts && tsx start-server.ts",
     "postinstall": "tsx scripts/patch-plugin-sql.ts || exit 0",
-    "build": "turbo run build && tsx build.ts && vite build",
+    "build": "turbo run build && bun run build.ts",
     "build:all": "turbo run build",
     "build:backend": "bun run build.ts",
     "build:frontend": "vite build",
