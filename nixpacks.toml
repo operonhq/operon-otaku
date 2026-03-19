@@ -5,7 +5,12 @@ nixPkgs = ["nodejs_20", "bun", "pnpm", "python3", "gcc", "gnumake"]
 cmds = ["pnpm i --frozen-lockfile"]
 
 [phases.build]
-cmds = ["rm -f bun.lockb && bun install && turbo run build && bun build.ts"]
+dependsOn = ["install"]
+cmds = ["rm -f bun.lockb && turbo run build && bun build.ts"]
 
 [start]
 cmd = "bun run start-server.ts"
+
+# Disable auto-detected providers to prevent duplicate install/build steps
+[phases.caddy]
+cmds = []
