@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["nodejs_20", "bun", "pnpm", "python3", "gcc", "gnumake"]
+
+[phases.install]
+cmds = ["pnpm i --frozen-lockfile"]
+
+[phases.build]
+cmds = ["turbo run build && bun run build.ts"]
+
+[start]
+cmd = "tsx start-server.ts"
