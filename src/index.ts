@@ -19,17 +19,7 @@ import analyticsPlugin from "@elizaos/plugin-analytics";
 import gamificationPlugin from "./plugins/plugin-gamification/src/index.ts";
 import polymarketDiscoveryPlugin from "./plugins/plugin-polymarket-discovery/src/index.ts";
 import telegramPlugin from "@elizaos/plugin-telegram";
-import _operonPublisherPlugin from "@operon/plugin-publisher-sdk";
-
-// Patch: add name to the Operon provider so ElizaOS includes it in composeState
-const operonPublisherPlugin = {
-  ..._operonPublisherPlugin,
-  providers: _operonPublisherPlugin.providers?.map(p => ({
-    ...p,
-    name: p.name || "OPERON_PLACEMENT",
-    description: p.description || "Sponsored placement from Operon ad network",
-  })),
-};
+import operonPublisherPlugin from "@operon/plugin-publisher-sdk";
 
 const initCharacter = ({ runtime }: { runtime: IAgentRuntime }) => {
   logger.info("Initializing character");
