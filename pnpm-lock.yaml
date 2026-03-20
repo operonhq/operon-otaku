@@ -66,8 +66,8 @@ importers:
         specifier: ^0.5.10
         version: 0.5.14(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@operon/plugin-publisher-sdk':
-        specifier: ^0.1.5
-        version: 0.1.5(@elizaos/core@1.7.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(ws@8.19.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)))
+        specifier: ^0.1.6
+        version: 0.1.6(@elizaos/core@1.7.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(ws@8.19.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)))
       '@polymarket/sdk':
         specifier: ^6.0.1
         version: 6.0.1(@ethersproject/abi@5.8.0)(@ethersproject/address@5.8.0)(@ethersproject/bignumber@5.8.0)(@ethersproject/constants@5.8.0)(@ethersproject/contracts@5.8.0)(@ethersproject/keccak256@5.8.0)(@ethersproject/providers@5.8.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@ethersproject/solidity@5.8.0)
@@ -1954,8 +1954,8 @@ packages:
   '@openzeppelin/merkle-tree@1.0.8':
     resolution: {integrity: sha512-E2c9/Y3vjZXwVvPZKqCKUn7upnvam1P1ZhowJyZVQSkzZm5WhumtaRr+wkUXrZVfkIc7Gfrl7xzabElqDL09ow==}
 
-  '@operon/plugin-publisher-sdk@0.1.5':
-    resolution: {integrity: sha512-CShR8VryGaws5YE7QkqQmHOFETX2hiyGTI/AwVuRL295EvJl4zwlyZzFTwtLDUv0rvR2qDsZseDCtEqK6FA1Bg==}
+  '@operon/plugin-publisher-sdk@0.1.6':
+    resolution: {integrity: sha512-laerVsATzXSOyD0KaH6Ix13NxRKuVzvJ9SWK/7zNMU0K4B6P4vmfQjXIk0bxbLHloVz4Yf8LY37d9p46ogo/ng==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       '@elizaos/core': ^0.1.0
@@ -8032,6 +8032,10 @@ packages:
     resolution: {integrity: sha512-BM/JzwwaRXxrLdElV2Uo6cTLEjhSb3WXboncJamZ15NgUURmvlXvxa6xkwIOILIjPNo9i8ku136ZvWV0Uly8+w==}
     engines: {node: '>=20.18.1'}
 
+  undici@7.24.5:
+    resolution: {integrity: sha512-3IWdCpjgxp15CbJnsi/Y9TCDE7HWVN19j1hmzVhoAkY/+CJx449tVxT5wZc1Gwg8J+P0LWvzlBzxYRnHJ+1i7Q==}
+    engines: {node: '>=20.18.1'}
+
   unified@11.0.5:
     resolution: {integrity: sha512-xKvGhPWw3k84Qjh8bI3ZeJjqnyadK+GEFtazSfZv/rKeTkTjOJho6mFqh2SM96iIcZokxiOpg78GazTSg8+KHA==}
 
@@ -9096,7 +9100,7 @@ snapshots:
       json5: 2.2.3
       markdown-it: 14.1.1
       pdfjs-dist: 5.5.207
-      undici: 7.24.4
+      undici: 7.24.5
       unique-names-generator: 4.7.1
       uuid: 13.0.0
       yaml: 2.8.2
@@ -10161,7 +10165,7 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/base': 1.2.6
       '@types/debug': 4.1.13
-      debug: 4.4.3
+      debug: 4.3.4
       pony-cause: 2.1.11
       semver: 7.7.4
       uuid: 9.0.1
@@ -10594,7 +10598,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@operon/plugin-publisher-sdk@0.1.5(@elizaos/core@1.7.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(ws@8.19.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)))':
+  '@operon/plugin-publisher-sdk@0.1.6(@elizaos/core@1.7.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(ws@8.19.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)))':
     dependencies:
       '@elizaos/core': 1.7.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(ws@8.19.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))
 
@@ -13739,7 +13743,7 @@ snapshots:
 
   '@types/node-fetch@2.6.13':
     dependencies:
-      '@types/node': 25.5.0
+      '@types/node': 22.19.1
       form-data: 4.0.5
 
   '@types/node@12.20.55': {}
@@ -19034,6 +19038,8 @@ snapshots:
   undici-types@7.24.4: {}
 
   undici@7.24.4: {}
+
+  undici@7.24.5: {}
 
   unified@11.0.5:
     dependencies:
