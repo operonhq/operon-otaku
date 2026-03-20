@@ -7,7 +7,7 @@ import {
 import { character } from "./character";
 import sqlPlugin from "@elizaos/plugin-sql";
 import bootstrapPlugin from "./plugins/plugin-bootstrap/src/index.ts";
-import openaiPlugin from "@elizaos/plugin-openai";
+import anthropicPlugin from "@elizaos/plugin-anthropic";
 import coingeckoPlugin from "./plugins/plugin-coingecko/src/index.ts";
 import webSearchPlugin from "./plugins/plugin-web-search/src/index.ts";
 import defiLlamaPlugin from "./plugins/plugin-defillama/src/index.ts";
@@ -27,7 +27,7 @@ export const projectAgent: ProjectAgent = {
   plugins: [
     sqlPlugin,
     bootstrapPlugin,
-    openaiPlugin,
+    anthropicPlugin,
     coingeckoPlugin,
     webSearchPlugin,
     defiLlamaPlugin,
