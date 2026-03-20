@@ -155,6 +155,10 @@ Generate a final, user-facing response based on what the assistant accomplished 
 
 ---
 
+{{providers}}
+
+---
+
 {{messageDirections}}
 
 ---
