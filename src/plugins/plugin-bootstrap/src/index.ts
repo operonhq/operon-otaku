@@ -23,10 +23,10 @@ import * as providers from './providers/index.js';
 
 import { TaskService } from './services/task.js';
 import { EmbeddingGenerationService } from './services/embedding.js';
-import { OtakuMessageService } from './services/otaku-message-service.js';
+import { ResearchMessageService } from './services/research-message-service.js';
 
 // Export the message service for external use
-export { OtakuMessageService };
+export { ResearchMessageService };
 
 /**
  * Syncs a single user into an entity
@@ -201,16 +201,16 @@ const controlMessageHandler = async ({
  * NOTE: Message handling has been migrated to service-based architecture.
  * 
  * MESSAGE_RECEIVED, VOICE_MESSAGE_RECEIVED, MESSAGE_DELETED, and CHANNEL_CLEARED
- * events are no longer handled here. Instead, the OtakuMessageService handles
+ * events are no longer handled here. Instead, the ResearchMessageService handles
  * all message processing directly via runtime.messageService.
- * 
+ *
  * This aligns with ElizaOS 1.7.0+ architecture where DefaultMessageService
- * (or custom implementations like OtakuMessageService) handle the message flow.
+ * (or custom implementations like ResearchMessageService) handle the message flow.
  */
 
 const events: PluginEvents = {
-  // Message handling events removed - now handled by OtakuMessageService directly
-  // See OtakuMessageService.handleMessage(), .deleteMessage(), .clearChannel()
+  // Message handling events removed - handled by ResearchMessageService directly
+  // See ResearchMessageService.handleMessage(), .deleteMessage(), .clearChannel()
 
   [EventType.WORLD_JOINED]: [
     async (payload: WorldPayload) => {
@@ -416,27 +416,27 @@ const events: PluginEvents = {
 };
 
 /**
- * Service that installs OtakuMessageService after runtime.initialize() completes.
- * 
+ * Service that installs ResearchMessageService after runtime.initialize() completes.
+ *
  * IMPORTANT: This must be a service (not plugin.init) because:
  * - Plugin.init runs during runtime.initialize()
  * - runtime.initialize() overwrites messageService with DefaultMessageService AFTER all plugins init
  * - Service.start() runs AFTER runtime.initialize() completes
- * 
+ *
  * This ensures our custom message service is the final assignment and isn't overwritten.
  */
 class MessageServiceInstaller extends Service {
-  static serviceType = 'otaku-message-installer';
-  capabilityDescription = 'Installs the custom OtakuMessageService after runtime initialization';
+  static serviceType = 'research-message-installer';
+  capabilityDescription = 'Installs the ResearchMessageService after runtime initialization';
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
     const service = new MessageServiceInstaller(runtime);
     
     // Replace DefaultMessageService with our custom implementation
     // This runs AFTER runtime.initialize() so it won't be overwritten
-    runtime.logger.info('[Bootstrap] Installing OtakuMessageService (post-initialization)');
-    runtime.messageService = new OtakuMessageService();
-    runtime.logger.info('[Bootstrap] OtakuMessageService installed successfully');
+    runtime.logger.info('[Bootstrap] Installing ResearchMessageService (post-initialization)');
+    runtime.messageService = new ResearchMessageService();
+    runtime.logger.info('[Bootstrap] ResearchMessageService installed successfully');
     
     return service;
   }
@@ -462,9 +462,7 @@ export const bootstrapPlugin: Plugin = {
   events: events,
   evaluators: [evaluators.reflectionEvaluator],
   providers: [
-    providers.evaluatorsProvider,
     providers.timeProvider,
-    providers.providersProvider,
     providers.actionsProvider,
     providers.actionStateProvider,
     providers.characterProvider,

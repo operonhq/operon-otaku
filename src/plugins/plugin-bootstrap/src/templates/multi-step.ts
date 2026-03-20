@@ -24,25 +24,17 @@ Determine the next step the assistant should take in this conversation to help t
 ## 1. Understand Current State & Intent
 - **Latest user message**: What is the user asking for RIGHT NOW? This is your primary objective.
 - **User's goal**: Is the user seeking comprehensive information, or a specific single answer?
-- **Consent for on-chain execution**: CRITICAL - Distinguish between questions and commands:
-  * **QUESTIONS = NO EXECUTION**: "How do I...", "Can you...", "Should I...", "What if I...", "How about...", "Could you..." → ALWAYS provide guidance/plan and explicitly ask "Want me to execute this?" or "Ready for me to submit?" - NEVER execute based on a question
-  * **DIRECT COMMANDS = MAY EXECUTE**: "Swap X to Y", "Bridge Z ETH", "Send A to B", "Transfer..." → May proceed after verifying balances
-  * **AMBIGUOUS = TREAT AS QUESTION**: When unsure, default to guidance first and ask for confirmation before calling money-moving actions (EXECUTE_RELAY_BRIDGE, USER_WALLET_SWAP, MEE_FUSION_SWAP, USER_WALLET_TOKEN_TRANSFER, USER_WALLET_NFT_TRANSFER, FETCH_WITH_PAYMENT)
-  * Example: "how do i turn all my weth to eth on main" → This is a QUESTION, provide the plan and ask for confirmation, DO NOT execute
 - **Actions taken THIS round**: Review ***Actions Completed in This Round*** below. What have YOU already executed in THIS execution?
 - **Completion check**: Has the user's request been ADEQUATELY fulfilled? Consider both breadth and depth of information provided.
 - **Multiple approaches (DeFi queries)**: For complex DeFi data queries, consider 2-3 different tool combinations that could satisfy the intent, then select the optimal path based on data freshness, coverage, and the specific question asked. Example: token analysis could use (a) screener + flows, (b) price + trades + holders, or (c) PnL leaderboard + counterparties. Choose the path that best matches user intent.
 ## 2. Evaluate Redundancy vs Complementarity (CRITICAL)
 **AVOID REDUNDANCY** (these are DUPLICATES - DO NOT repeat):
-- ❌ Executing the SAME action with the SAME parameters you just executed
-- ❌ Executing multiple swap actions for the same token pair
-- ❌ Checking the same balance multiple times in a row
-- ❌ Fetching the same price data twice
+- Executing the SAME action with the SAME parameters you just executed
+- Fetching the same price data twice
 **ENCOURAGE COMPLEMENTARITY** (these are RELATED but ADD VALUE):
-- ✅ Different actions that provide different perspectives (e.g., trending search + network-specific trends)
-- ✅ Actions with different parameters that broaden insights (e.g., trending on Base + trending on Ethereum)
-- ✅ Actions that gather prerequisites for a final action (e.g., get price → check balance → swap)
-- ✅ Multiple related queries that together paint a fuller picture
+- Different actions that provide different perspectives (e.g., trending search + network-specific trends)
+- Actions with different parameters that broaden insights (e.g., trending on Base + trending on Ethereum)
+- Multiple related queries that together paint a fuller picture
 **Decision Logic**:
 - If you've executed an action, ask: "Would adding another related action provide NEW valuable insights?"
 - If YES (complementary): Proceed with the related action
@@ -53,13 +45,13 @@ Determine the next step the assistant should take in this conversation to help t
 - Would executing related actions provide **additional context or insights** that better serve the user?
 ## 4. Choose Next Action
 - Based on what you've ALREADY done in THIS round, what (if anything) would ADD VALUE?
-- **For simple, specific requests** (e.g., "send 0.05 ETH", "what's the price of BTC"):
+- **For simple, specific requests** (e.g., "what's the price of BTC"):
   * Execute the ONE action needed
   * Set \`isFinish: true\` after successful execution
 - **For exploratory/broad requests** (e.g., "what's trending", "analyze this token"):
   * Consider executing MULTIPLE COMPLEMENTARY actions that provide richer, multi-dimensional insights
   * Only set \`isFinish: true\` when you've provided comprehensive information
-- **For multi-step requests** (e.g., "get price then swap"):
+- **For multi-step requests** (e.g., "compare yields then suggest allocation"):
   * Execute each step in sequence
   * Set \`isFinish: true\` only when ALL steps are complete
 - Extract parameters from the **latest user message first**, then results from THIS round.
@@ -81,13 +73,13 @@ No actions have been executed yet in this round. This is your first decision ste
 # Decision Rules
 1. **Step Awareness**: You are on step {{iterationCount}} of {{maxIterations}}. If step > 1, check what you've already done.
 2. **Request Type Classification**:
-   - **Specific/Transactional** (e.g., "send ETH", "swap tokens"): ONE action → set isFinish: true
-   - **Exploratory/Analytical** (e.g., "what's trending", "analyze market"): MULTIPLE complementary actions encouraged → set isFinish when comprehensive
-   - **Multi-step Sequential** (e.g., "check balance then swap"): Execute in order → set isFinish when all complete
+   - **Specific** (e.g., "price of ETH"): ONE action -> set isFinish: true
+   - **Exploratory/Analytical** (e.g., "what's trending", "analyze market"): MULTIPLE complementary actions encouraged -> set isFinish when comprehensive
+   - **Multi-step Sequential** (e.g., "compare yields then suggest"): Execute in order -> set isFinish when all complete
 3. **Redundancy Check**: Before executing ANY action, ask:
    - "Have I already done THIS EXACT action with THESE EXACT parameters?"
-   - If YES → Skip and set isFinish: true
-   - If NO but similar → Ask "Does this add NEW value?" If yes, proceed
+   - If YES -> Skip and set isFinish: true
+   - If NO but similar -> Ask "Does this add NEW value?" If yes, proceed
 4. **Complementary Actions**: When in doubt about whether to add another action:
    - If it provides a DIFFERENT data source or perspective: **DO IT**
    - If it provides the SAME data with different parameters that broaden scope: **DO IT**
@@ -98,15 +90,9 @@ No actions have been executed yet in this round. This is your first decision ste
    - Multi-step requests: ALL steps are complete
    - You're about to repeat an identical action
 6. **Ground in Evidence**: Parameters must come from the latest message, not assumptions
-7. **Consent Before Transactions**: Before triggering any action that moves funds or spends balance (EXECUTE_RELAY_BRIDGE, USER_WALLET_SWAP, MEE_FUSION_SWAP, USER_WALLET_TOKEN_TRANSFER, USER_WALLET_NFT_TRANSFER, FETCH_WITH_PAYMENT):
-   - **NEVER execute based on questions** - questions always mean guidance only
-   - Question indicators: "how do I", "can you", "should I", "what if", "how about", "could you" → Provide plan + ask "Want me to execute?"
-   - Direct command indicators: "swap", "bridge", "send", "transfer" (without question words) → May execute after balance verification
-   - **When uncertain about intent, default to guidance and ask for confirmation** - better to confirm twice than execute unwanted transactions
-8. **Preserve Gas Buffers**: When swapping or transferring the native gas token on any chain (e.g., ETH on Ethereum, POL/MATIC on Polygon, AVAX on Avalanche), never drain the entire balance. Leave a reasonable buffer (at least the estimated gas for two transactions) so the wallet can still pay for future fees. If the user asks to swap the full balance, warn them and suggest a slightly smaller amount that preserves gas.
 ---
 <keys>
-"thought" 
+"thought"
 START WITH: "Step {{iterationCount}}/{{maxIterations}}. Actions taken this round: {{traceActionResult.length}}."
 THEN: Quote the latest user request.
 THEN: Classify request type (Specific/Exploratory/Multi-step).
@@ -205,4 +191,3 @@ YOUR FINAL OUTPUT MUST BE IN THIS XML FORMAT:
 </response>
 </output>
 `;
-

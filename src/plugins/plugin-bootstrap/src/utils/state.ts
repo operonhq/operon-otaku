@@ -16,11 +16,10 @@ export async function refreshStateAfterAction(
   currentState: State,
   actionResults: unknown[]
 ): Promise<State> {
-  // Recompose state with updated wallet info and action results
+  // Recompose state with updated action results
   const refreshedState = await runtime.composeState(message, [
     'RECENT_MESSAGES',
     'ACTION_STATE',
-    'WALLET_STATE',
   ]);
 
   // Preserve action results in state
