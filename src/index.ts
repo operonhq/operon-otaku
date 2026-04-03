@@ -1,10 +1,10 @@
 import {
   logger,
-  type IAgentRuntime,
+  type Character,
+  type Plugin,
   type Project,
   type ProjectAgent,
 } from "@elizaos/core";
-import { character } from "./character";
 import sqlPlugin from "@elizaos/plugin-sql";
 import bootstrapPlugin from "./plugins/plugin-bootstrap/src/index.ts";
 import anthropicPlugin from "@elizaos/plugin-anthropic";
@@ -13,17 +13,60 @@ import webSearchPlugin from "./plugins/plugin-web-search/src/index.ts";
 import defiLlamaPlugin from "./plugins/plugin-defillama/src/index.ts";
 import analyticsPlugin from "@elizaos/plugin-analytics";
 import polymarketDiscoveryPlugin from "./plugins/plugin-polymarket-discovery/src/index.ts";
-import telegramPlugin from "@elizaos/plugin-telegram";
 import operonPublisherPlugin from "@operon/plugin-publisher-sdk";
 
-const initCharacter = ({ runtime }: { runtime: IAgentRuntime }) => {
-  logger.info("Initializing character");
-  logger.info({ name: character.name }, "Character loaded:");
+// Messaging plugins - only loaded when credentials are configured
+const telegramEnabled = !!process.env.TELEGRAM_BOT_TOKEN?.trim();
+let telegramPlugin: Plugin | undefined;
+if (telegramEnabled) {
+  try {
+    telegramPlugin = (await import("@elizaos/plugin-telegram")).default as Plugin;
+  } catch (err) {
+    logger.error({ error: err }, "Failed to load Telegram plugin - continuing without Telegram");
+  }
+}
+
+const discordEnabled = !!process.env.DISCORD_API_TOKEN?.trim();
+let discordPlugin: Plugin | undefined;
+if (discordEnabled) {
+  try {
+    discordPlugin = (await import("@elizaos/plugin-discord")).default as Plugin;
+  } catch (err) {
+    logger.error({ error: err }, "Failed to load Discord plugin - continuing without Discord");
+  }
+}
+
+// Character files
+import { defiAnalyst } from "./characters/defi-analyst.ts";
+import { yieldScout } from "./characters/yield-scout.ts";
+import { riskRadar } from "./characters/risk-radar.ts";
+import { gasOptimizer } from "./characters/gas-optimizer.ts";
+import { portfolioCheck } from "./characters/portfolio-check.ts";
+
+const CHARACTERS: Record<string, Character> = {
+  defi_analyst: defiAnalyst,
+  yield_scout: yieldScout,
+  risk_radar: riskRadar,
+  gas_optimizer: gasOptimizer,
+  portfolio_check: portfolioCheck,
 };
+
+const characterKey = (process.env.AGENT_CHARACTER || "defi_analyst").trim();
+const character = CHARACTERS[characterKey];
+if (!character) {
+  throw new Error(
+    `Unknown AGENT_CHARACTER: "${characterKey}". Valid options: ${Object.keys(CHARACTERS).join(", ")}`
+  );
+}
+
+// Log character and integration status at module load time (start-server.ts doesn't call init)
+logger.info({ name: character.name, key: characterKey }, "Character loaded:");
+logger.info({ discord: discordEnabled, telegram: telegramEnabled }, "Integrations:");
 
 export const projectAgent: ProjectAgent = {
   character,
-  init: async (runtime: IAgentRuntime) => await initCharacter({ runtime }),
+  // SECURITY: These plugins define what the LLM can DO, not the character prompt.
+  // Never add transaction/write plugins here. See docs and project_agent_scope memory.
   plugins: [
     sqlPlugin,
     bootstrapPlugin,
@@ -34,14 +77,13 @@ export const projectAgent: ProjectAgent = {
     polymarketDiscoveryPlugin,
     analyticsPlugin,
     operonPublisherPlugin,
-    telegramPlugin,
+    ...(telegramEnabled && telegramPlugin ? [telegramPlugin] : []),
+    ...(discordEnabled && discordPlugin ? [discordPlugin] : []),
   ],
 };
 
 const project: Project = {
   agents: [projectAgent],
 };
-
-export { character } from "./character";
 
 export default project;
