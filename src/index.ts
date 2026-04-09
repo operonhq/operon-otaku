@@ -42,6 +42,7 @@ import { yieldScout } from "./characters/yield-scout.ts";
 import { riskRadar } from "./characters/risk-radar.ts";
 import { gasOptimizer } from "./characters/gas-optimizer.ts";
 import { portfolioCheck } from "./characters/portfolio-check.ts";
+import { rev } from "./characters/rev.ts";
 
 const CHARACTERS: Record<string, Character> = {
   defi_analyst: defiAnalyst,
@@ -49,6 +50,7 @@ const CHARACTERS: Record<string, Character> = {
   risk_radar: riskRadar,
   gas_optimizer: gasOptimizer,
   portfolio_check: portfolioCheck,
+  rev: rev,
 };
 
 const characterKey = (process.env.AGENT_CHARACTER || "defi_analyst").trim();
