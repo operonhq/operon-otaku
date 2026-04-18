@@ -43,6 +43,7 @@ import { riskRadar } from "./characters/risk-radar.ts";
 import { gasOptimizer } from "./characters/gas-optimizer.ts";
 import { portfolioCheck } from "./characters/portfolio-check.ts";
 import { rev } from "./characters/rev.ts";
+import { operonResearch } from "./characters/operon-research.ts";
 
 const CHARACTERS: Record<string, Character> = {
   defi_analyst: defiAnalyst,
@@ -51,6 +52,7 @@ const CHARACTERS: Record<string, Character> = {
   gas_optimizer: gasOptimizer,
   portfolio_check: portfolioCheck,
   rev: rev,
+  operon_research: operonResearch,
 };
 
 const characterKey = (process.env.AGENT_CHARACTER || "defi_analyst").trim();
