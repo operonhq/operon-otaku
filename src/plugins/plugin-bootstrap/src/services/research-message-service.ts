@@ -199,10 +199,10 @@ export class ResearchMessageService implements IMessageService {
     'Welcome to Operon Research. I cover DeFi protocols, yields, swap routes, and risk assessment. When I recommend a tool, it is matched via a quality-weighted auction on Operon.',
     '',
     'Try one of these:',
-    '- "What\'s the cheapest way to swap ETH to USDC right now?"',
+    '- "What\'s the cheapest way to swap ETH to USDC?"',
     '- "Best way to bridge from Arbitrum to Base?"',
-    '- "Compare DEX aggregators for a $5K swap"',
-    '- "Non-KYC options for swapping between chains"',
+    '- "Compare Aave and Compound yields"',
+    '- "Is Uniswap safe to use right now?"',
     '- "Gas-optimized swap route for stablecoins"',
   ].join('\n');
 
@@ -210,10 +210,10 @@ export class ResearchMessageService implements IMessageService {
   private static readonly HELP_TEXT = [
     'Here are some things you can ask me:',
     '',
-    '- "What\'s the cheapest way to swap ETH to USDC right now?"',
+    '- "What\'s the cheapest way to swap ETH to USDC?"',
     '- "Best way to bridge from Arbitrum to Base?"',
-    '- "Compare DEX aggregators for a $5K swap"',
-    '- "Non-KYC options for swapping between chains"',
+    '- "Compare Aave and Compound yields"',
+    '- "Is Uniswap safe to use right now?"',
     '- "Gas-optimized swap route for stablecoins"',
     '',
     'I focus on DeFi research - protocols, yields, swap routes, and risk assessment.',
