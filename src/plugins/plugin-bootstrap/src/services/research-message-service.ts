@@ -152,6 +152,10 @@ export class ResearchMessageService implements IMessageService {
       if (!shouldAnswer) return emptyResult;
     }
 
+    // 3.5. Handle /start, /help commands and first-message welcome
+    const commandResult = await this.handleCommandsAndWelcome(runtime, message, callback);
+    if (commandResult) return commandResult;
+
     // 4. Multi-step tool loop
     const { traces, state: loopState } = await this.runToolLoop(runtime, message);
 
@@ -188,6 +192,115 @@ export class ResearchMessageService implements IMessageService {
       state: loopState,
       mode: responseContent ? 'simple' : 'none',
     };
+  }
+
+  /** Welcome text shown on /start and first message from a new user. */
+  private static readonly WELCOME_TEXT = [
+    'Welcome to Operon Research. I cover DeFi protocols, yields, swap routes, and risk assessment. When I recommend a tool, it is matched via a quality-weighted auction on Operon.',
+    '',
+    'Try one of these:',
+    '- "What\'s the cheapest way to swap ETH to USDC right now?"',
+    '- "Best way to bridge from Arbitrum to Base?"',
+    '- "Compare DEX aggregators for a $5K swap"',
+    '- "Non-KYC options for swapping between chains"',
+    '- "Gas-optimized swap route for stablecoins"',
+  ].join('\n');
+
+  /** Help text shown on /help. */
+  private static readonly HELP_TEXT = [
+    'Here are some things you can ask me:',
+    '',
+    '- "What\'s the cheapest way to swap ETH to USDC right now?"',
+    '- "Best way to bridge from Arbitrum to Base?"',
+    '- "Compare DEX aggregators for a $5K swap"',
+    '- "Non-KYC options for swapping between chains"',
+    '- "Gas-optimized swap route for stablecoins"',
+    '',
+    'I focus on DeFi research - protocols, yields, swap routes, and risk assessment.',
+  ].join('\n');
+
+  /**
+   * Handle /start, /help commands and first-message welcome.
+   * Returns a MessageProcessingResult to short-circuit if handled, or null to continue.
+   */
+  private async handleCommandsAndWelcome(
+    runtime: IAgentRuntime,
+    message: Memory,
+    callback?: HandlerCallback
+  ): Promise<MessageProcessingResult | null> {
+    const rawText = (message.content.text || '').trim();
+    // Strip @botname suffix (Telegram sends /start@operon_research_bot in groups)
+    const baseCommand = rawText.toLowerCase().split('@')[0];
+
+    // /start and /help: respond directly, skip tool loop
+    if (baseCommand === '/start' || baseCommand === '/help') {
+      runtime.logger.info(`[Research] Handling command: ${baseCommand}`);
+      const responseText =
+        baseCommand === '/start'
+          ? ResearchMessageService.WELCOME_TEXT
+          : ResearchMessageService.HELP_TEXT;
+
+      const content: Content = { text: responseText, actions: [], simple: true };
+      if (callback) await callback(content);
+
+      const responseMem: Memory = {
+        id: asUUID(v4()),
+        entityId: runtime.agentId,
+        agentId: runtime.agentId,
+        content,
+        roomId: message.roomId,
+        createdAt: Date.now(),
+      };
+      await runtime.createMemory(responseMem, 'messages');
+
+      return {
+        didRespond: true,
+        responseContent: content,
+        responseMessages: [responseMem],
+        state: { values: {}, data: {}, text: '' } as State,
+        mode: 'simple',
+      };
+    }
+
+    // First-message detection: if this user has no prior messages in this room,
+    // send the welcome before continuing to the normal tool loop.
+    // When a first real query triggers this, the user receives two messages:
+    // the welcome (here) and then the research response (from the tool loop).
+    try {
+      const roomMessages = await runtime.getMemoriesByRoomIds({
+        tableName: 'messages',
+        roomIds: [message.roomId],
+        limit: 10,
+      });
+      const userPrior = roomMessages.filter(
+        (m) => m.entityId === message.entityId && m.id !== message.id
+      );
+      if (userPrior.length === 0) {
+        runtime.logger.info('[Research] First message from user, sending welcome');
+        const welcomeContent: Content = {
+          text: ResearchMessageService.WELCOME_TEXT,
+          actions: [],
+          simple: true,
+        };
+        if (callback) await callback(welcomeContent);
+        await runtime.createMemory(
+          {
+            id: asUUID(v4()),
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            content: welcomeContent,
+            roomId: message.roomId,
+            createdAt: Date.now(),
+          },
+          'messages'
+        );
+      }
+    } catch (err) {
+      runtime.logger.warn(`[Research] First-message check failed: ${err}`);
+    }
+
+    // Continue to normal processing
+    return null;
   }
 
   /**
