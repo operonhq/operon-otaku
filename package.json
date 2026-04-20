@@ -46,7 +46,7 @@
     "@morpho-org/blue-sdk-viem": "3.2.0",
     "@morpho-org/morpho-ts": "2.4.5",
     "@number-flow/react": "^0.5.10",
-    "@operon/plugin-publisher-sdk": "^0.1.7",
+    "@operon/plugin-publisher-sdk": "^0.1.8",
     "@polymarket/sdk": "^6.0.1",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-avatar": "1.1.2",
