@@ -262,44 +262,7 @@ export class ResearchMessageService implements IMessageService {
       };
     }
 
-    // First-message detection: if this user has no prior messages in this room,
-    // send the welcome before continuing to the normal tool loop.
-    // When a first real query triggers this, the user receives two messages:
-    // the welcome (here) and then the research response (from the tool loop).
-    try {
-      const roomMessages = await runtime.getMemoriesByRoomIds({
-        tableName: 'messages',
-        roomIds: [message.roomId],
-        limit: 10,
-      });
-      const userPrior = roomMessages.filter(
-        (m) => m.entityId === message.entityId && m.id !== message.id
-      );
-      if (userPrior.length === 0) {
-        runtime.logger.info('[Research] First message from user, sending welcome');
-        const welcomeContent: Content = {
-          text: ResearchMessageService.WELCOME_TEXT,
-          actions: [],
-          simple: true,
-        };
-        if (callback) await callback(welcomeContent);
-        await runtime.createMemory(
-          {
-            id: asUUID(v4()),
-            entityId: runtime.agentId,
-            agentId: runtime.agentId,
-            content: welcomeContent,
-            roomId: message.roomId,
-            createdAt: Date.now(),
-          },
-          'messages'
-        );
-      }
-    } catch (err) {
-      runtime.logger.warn(`[Research] First-message check failed: ${err}`);
-    }
-
-    // Continue to normal processing
+    // Continue to normal processing (welcome only on explicit /start or /help above)
     return null;
   }
 
