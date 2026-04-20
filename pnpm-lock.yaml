@@ -69,8 +69,8 @@ importers:
         specifier: ^0.5.10
         version: 0.5.14(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@operon/plugin-publisher-sdk':
-        specifier: ^0.1.8
-        version: 0.1.8(@elizaos/core@1.7.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(ws@8.19.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)))
+        specifier: ^0.1.9
+        version: 0.1.9(@elizaos/core@1.7.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(ws@8.19.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)))
       '@polymarket/sdk':
         specifier: ^6.0.1
         version: 6.0.1(@ethersproject/abi@5.8.0)(@ethersproject/address@5.8.0)(@ethersproject/bignumber@5.8.0)(@ethersproject/constants@5.8.0)(@ethersproject/contracts@5.8.0)(@ethersproject/keccak256@5.8.0)(@ethersproject/providers@5.8.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@ethersproject/solidity@5.8.0)
@@ -2084,8 +2084,8 @@ packages:
   '@openzeppelin/merkle-tree@1.0.8':
     resolution: {integrity: sha512-E2c9/Y3vjZXwVvPZKqCKUn7upnvam1P1ZhowJyZVQSkzZm5WhumtaRr+wkUXrZVfkIc7Gfrl7xzabElqDL09ow==}
 
-  '@operon/plugin-publisher-sdk@0.1.8':
-    resolution: {integrity: sha512-HavE1CB07Dr1AyvbWDADMAHxq5jGxV570ybdG1jVbyHMAptpzJYquoslId7O5Epxr7uwGHaCxTnVg7WKsNp0NA==}
+  '@operon/plugin-publisher-sdk@0.1.9':
+    resolution: {integrity: sha512-yIhkA/yIS8EqcC+jJOmg+HGvvCBVkZjBZlF7P6tNCNXnzKVwXbVDThScKLC+sztNYCagvqrx8J6zzWcww0Dp3g==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       '@elizaos/core': ^0.1.0
@@ -11298,7 +11298,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@operon/plugin-publisher-sdk@0.1.8(@elizaos/core@1.7.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(ws@8.19.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)))':
+  '@operon/plugin-publisher-sdk@0.1.9(@elizaos/core@1.7.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(ws@8.19.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)))':
     dependencies:
       '@elizaos/core': 1.7.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(ws@8.19.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))
 
