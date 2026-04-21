@@ -82,7 +82,7 @@ const patches: Patch[] = [
       '        const cbChat = ctx.callbackQuery.message?.chat;',
       '        const cbFrom = ctx.callbackQuery.from;',
       '        if (!cbChat || !cbFrom) return;',
-      '        Object.defineProperty(ctx, "message", { value: { message_id: Date.now(), date: Math.floor(Date.now() / 1000), chat: cbChat, from: cbFrom, text: data }, configurable: true });',
+      '        Object.defineProperty(ctx, "message", { value: { message_id: 0, date: Math.floor(Date.now() / 1000), chat: cbChat, from: cbFrom, text: data }, configurable: true });',
       '        await this.messageManager.handleMessage(ctx);',
       '      } catch (error) {',
       '        logger3.error({ src: "plugin:telegram", agentId: this.runtime.agentId, error: error instanceof Error ? error.message : String(error) }, "Error handling callback query");',
