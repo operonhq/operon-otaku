@@ -71,6 +71,11 @@ Respond using XML format like this:
 IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.
 </output>`;
 
+/** Extended Content with Telegram-specific inline keyboard buttons (processed by patched plugin). */
+interface ContentWithButtons extends Content {
+  buttons?: Array<{ kind: string; text: string; url: string }>;
+}
+
 /** Result type for multi-step action tracking */
 interface ActionTrace {
   actionName: string;
@@ -81,8 +86,16 @@ interface ActionTrace {
 
 const MAX_ITERATIONS = 4;
 const MAX_PARSE_RETRIES = 3;
+/** Max time for tool loop + summary before we abort and send a timeout message. */
+const QUERY_TIMEOUT_MS = 60_000;
+/** Per-user rate limit: max queries within the sliding window. */
+const RATE_LIMIT_MAX = 5;
+const RATE_LIMIT_WINDOW_MS = 60_000;
 
 export class ResearchMessageService implements IMessageService {
+  /** Sliding-window rate limiter: entityId -> timestamps of recent queries. */
+  private readonly recentQueries = new Map<string, number[]>();
+
   /**
    * Main entry point - called by ElizaOS Telegram client for each message.
    */
@@ -92,6 +105,8 @@ export class ResearchMessageService implements IMessageService {
     callback?: HandlerCallback,
     _options?: MessageProcessingOptions
   ): Promise<MessageProcessingResult> {
+    const tStart = Date.now();
+
     const emptyResult: MessageProcessingResult = {
       didRespond: false,
       responseContent: null,
@@ -109,7 +124,7 @@ export class ResearchMessageService implements IMessageService {
       `[Research] Processing: "${truncateToCompleteSentence(message.content.text || '', 80)}"`
     );
 
-    // 2. Handle /start, /help commands before anything else (no shouldRespond gate)
+    // 2. Handle /start, /help commands and first-message welcome
     const commandResult = await this.handleCommandsAndWelcome(runtime, message, callback);
     if (commandResult) return commandResult;
 
@@ -156,17 +171,87 @@ export class ResearchMessageService implements IMessageService {
       if (!shouldAnswer) return emptyResult;
     }
 
-    // 4. Multi-step tool loop
-    const { traces, state: loopState } = await this.runToolLoop(runtime, message);
+    // --- Active query processing starts here ---
 
-    // 5. Generate summary response
-    const responseContent = await this.generateSummary(runtime, message, traces);
+    // Per-user rate limit (sliding window)
+    const userId = message.entityId;
+    const now = Date.now();
+    const timestamps = this.recentQueries.get(userId) ?? [];
+    const recent = timestamps.filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+    if (recent.length >= RATE_LIMIT_MAX) {
+      runtime.logger.warn({ userId, count: recent.length }, '[Research] Rate limit exceeded');
+      if (callback) {
+        try {
+          await callback({ text: 'Slow down - I can handle about 5 queries per minute. Try again shortly.', actions: [], simple: true } as Content);
+        } catch { /* best-effort */ }
+      }
+      return emptyResult;
+    }
+    recent.push(now);
+    this.recentQueries.set(userId, recent);
 
-    // 6. Send response via callback and persist to memory
+    // Send instant ack (visible in-thread feedback while LLM works)
+    if (callback) {
+      try {
+        await callback({ text: 'On it. Pulling research. One sec.', actions: [], simple: true } as Content);
+      } catch (ackErr) {
+        runtime.logger.warn({ err: ackErr }, '[Research] Ack send failed, continuing with query');
+      }
+    }
+    const tAckSent = Date.now();
+
+    // 5. Multi-step tool loop + summary with overall timeout
+    let traces: ActionTrace[];
+    let loopState: State;
+    let responseContent: Content | null;
+    let tToolLoopDone: number;
+    let tSummaryDone: number;
+
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => reject(new Error('QUERY_TIMEOUT')), QUERY_TIMEOUT_MS);
+    });
+
+    try {
+      const result = await Promise.race([
+        (async () => {
+          const loop = await this.runToolLoop(runtime, message);
+          const tLoop = Date.now();
+          const summary = await this.generateSummary(runtime, message, loop.traces);
+          const tSummary = Date.now();
+          return { ...loop, responseContent: summary, tLoop, tSummary };
+        })(),
+        timeoutPromise,
+      ]);
+      clearTimeout(timeoutHandle);
+      traces = result.traces;
+      loopState = result.state;
+      responseContent = result.responseContent;
+      tToolLoopDone = result.tLoop;
+      tSummaryDone = result.tSummary;
+    } catch (err) {
+      clearTimeout(timeoutHandle);
+      if (err instanceof Error && err.message === 'QUERY_TIMEOUT') {
+        runtime.logger.error('[Research] Query timed out after 60s');
+        if (callback) {
+          try {
+            await callback({ text: 'This one is taking too long. Try a simpler question or ask again in a moment.', actions: [], simple: true } as Content);
+          } catch { /* best-effort */ }
+        }
+        return emptyResult;
+      }
+      throw err; // re-throw non-timeout errors
+    }
+
+    // 7. Send response via callback and persist to memory
     let responseMessages: Memory[] = [];
     if (responseContent) {
       if (callback) {
-        await callback(responseContent);
+        try {
+          await callback(responseContent);
+        } catch (sendErr) {
+          runtime.logger.error({ err: sendErr }, '[Research] Failed to send response to Telegram');
+        }
       }
 
       // Persist response to messages table so RECENT_MESSAGES includes it in future turns
@@ -181,9 +266,24 @@ export class ResearchMessageService implements IMessageService {
       await runtime.createMemory(responseMem, 'messages');
       responseMessages = [responseMem];
     }
+    const tResponseSent = Date.now();
 
-    // 7. Run evaluators (reflection, etc.)
+    // 8. Run evaluators (reflection, etc.)
     await runtime.evaluate(message, loopState, !!responseContent, callback, responseMessages);
+
+    // Log latency breakdown
+    const uptime = process.uptime();
+    runtime.logger.info({
+      ms: {
+        setupToAck: tAckSent - tStart,
+        toolLoop: tToolLoopDone - tAckSent,
+        summary: tSummaryDone - tToolLoopDone,
+        sendResponse: tResponseSent - tSummaryDone,
+        total: tResponseSent - tStart,
+      },
+      coldStart: uptime < 60,
+      uptimeSeconds: Math.round(uptime),
+    }, '[Research:Latency] Query breakdown');
 
     return {
       didRespond: !!responseContent,
@@ -194,34 +294,50 @@ export class ResearchMessageService implements IMessageService {
     };
   }
 
-  /** Welcome text shown on /start and first message from a new user. */
+  /** Welcome/help text shown on /start, /help, and first message from new user. */
   private static readonly WELCOME_TEXT = [
-    'Welcome to Operon Research. I cover DeFi protocols, yields, swap routes, and risk assessment. When I recommend a tool, it is matched via a quality-weighted auction on Operon.',
+    'Operon Research here. DeFi analysis: protocols, yields, swaps, bridges, risk.',
     '',
-    'Try one of these:',
-    '- "What\'s the cheapest way to swap ETH to USDC?"',
-    '- "Best way to bridge from Arbitrum to Base?"',
-    '- "Compare Aave and Compound yields"',
-    '- "Is Uniswap safe to use right now?"',
-    '- "Gas-optimized swap route for stablecoins"',
+    'When a paid tool matches your query, I\'ll surface it inline tagged [sponsored]. When nothing matches, you just get the research.',
+    '',
+    'Or ask your own.',
   ].join('\n');
 
-  /** Help text shown on /help. */
-  private static readonly HELP_TEXT = [
-    'Here are some things you can ask me:',
-    '',
-    '- "What\'s the cheapest way to swap ETH to USDC?"',
-    '- "Best way to bridge from Arbitrum to Base?"',
-    '- "Compare Aave and Compound yields"',
-    '- "Is Uniswap safe to use right now?"',
-    '- "Gas-optimized swap route for stablecoins"',
-    '',
-    'I focus on DeFi research - protocols, yields, swap routes, and risk assessment.',
-  ].join('\n');
+  /** Help text (same as welcome). */
+  private static readonly HELP_TEXT = ResearchMessageService.WELCOME_TEXT;
+
+  /**
+   * Inline keyboard prompts: 3 swap-intent (placement expected), 2 non-swap (research only).
+   * SYNC: this list is duplicated in scripts/patch-plugin-telegram.ts (ALLOWED_CB in patch 6).
+   * If you add/remove/change prompts here, update the patch script's allowlist too.
+   */
+  private static readonly EXAMPLE_PROMPTS = [
+    "What's the cheapest way to swap ETH to USDC?",
+    'Best way to bridge from Arbitrum to Base?',
+    'Compare Aave and Compound yields',
+    'Is Uniswap safe to use right now?',
+    'Gas-optimized swap route for stablecoins',
+  ];
+
+  /** Build welcome content with inline keyboard buttons (callback kind, processed by patched plugin). */
+  private static buildWelcomeContent(text?: string): ContentWithButtons {
+    return {
+      text: text ?? ResearchMessageService.WELCOME_TEXT,
+      actions: [],
+      simple: true,
+      // Telegram inline keyboard - patched plugin converts kind:"callback" to Markup.button.callback
+      buttons: ResearchMessageService.EXAMPLE_PROMPTS.map(p => ({
+        kind: 'callback',
+        text: p,
+        url: p, // callback data (same as display text, all under 64 bytes)
+      })),
+    };
+  }
 
   /**
    * Handle /start, /help commands and first-message welcome.
-   * Returns a MessageProcessingResult to short-circuit if handled, or null to continue.
+   * Returns a MessageProcessingResult to short-circuit if handled (commands),
+   * or null to continue normal processing (first-message welcome fires but query still processes).
    */
   private async handleCommandsAndWelcome(
     runtime: IAgentRuntime,
@@ -240,7 +356,7 @@ export class ResearchMessageService implements IMessageService {
           ? ResearchMessageService.WELCOME_TEXT
           : ResearchMessageService.HELP_TEXT;
 
-      const content: Content = { text: responseText, actions: [], simple: true };
+      const content = ResearchMessageService.buildWelcomeContent(responseText);
       if (callback) await callback(content);
 
       const responseMem: Memory = {
@@ -262,7 +378,20 @@ export class ResearchMessageService implements IMessageService {
       };
     }
 
-    // Continue to normal processing (welcome only on explicit /start or /help above)
+    // First message from new user (no /start): fire welcome before processing query.
+    // Covers deep-link arrivals and share-link entry where Start button is skipped.
+    const roomMessages = await runtime.getMemoriesByRoomIds({
+      tableName: 'messages',
+      roomIds: [message.roomId],
+      count: 1, // only need to know if any exist
+    });
+    if (roomMessages.length === 0) {
+      runtime.logger.info('[Research] First message from new user - sending welcome before query');
+      const welcomeContent = ResearchMessageService.buildWelcomeContent();
+      if (callback) await callback(welcomeContent);
+      // Don't short-circuit: fall through so the user's actual query gets processed
+    }
+
     return null;
   }
 
@@ -337,10 +466,12 @@ export class ResearchMessageService implements IMessageService {
       logPrompt(runtime.logger, `decision-${i}`, prompt);
 
       // LLM decides next action
+      const tDecisionStart = Date.now();
       const parsed = await retryParse(async () => {
         const raw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
         return parseKeyValueXml(raw);
       }, MAX_PARSE_RETRIES, `decision-${i}`);
+      const tDecisionEnd = Date.now();
 
       if (!parsed) {
         runtime.logger.warn(`[Research] Failed to parse decision at step ${i}`);
@@ -364,6 +495,7 @@ export class ResearchMessageService implements IMessageService {
 
       // Execute the action
       runtime.logger.info(`[Research] Step ${i}: executing ${cleanAction}`);
+      const tActionStart = Date.now();
 
       try {
         // Parse parameters
@@ -426,6 +558,20 @@ export class ResearchMessageService implements IMessageService {
         });
       }
 
+      const tActionEnd = Date.now();
+
+      // Per-step latency (actions run serial, not parallel)
+      runtime.logger.info({
+        step: i,
+        action: cleanAction,
+        ms: {
+          llmDecision: tDecisionEnd - tDecisionStart,
+          actionExecution: tActionEnd - tActionStart,
+          stepTotal: tActionEnd - tDecisionStart,
+        },
+        serial: true,
+      }, `[Research:Latency] Step ${i}: ${cleanAction}`);
+
       // Check if done
       if (isFinish === 'true' || isFinish === true) {
         runtime.logger.info(`[Research] Finished at step ${i}`);
@@ -447,6 +593,7 @@ export class ResearchMessageService implements IMessageService {
     message: Memory,
     traces: ActionTrace[]
   ): Promise<Content | null> {
+    const tComposeStart = Date.now();
     const providerList = ['RECENT_MESSAGES', 'ACTION_STATE', 'OPERON_PLACEMENT', 'CHARACTER', 'TIME'];
     const state = await runtime.composeState(message, providerList, true);
     state.data.actionResults = traces;
@@ -459,11 +606,21 @@ export class ResearchMessageService implements IMessageService {
     logState(runtime.logger, 'summary', state, providerList);
     logPrompt(runtime.logger, 'summary', prompt);
 
+    const tLlmStart = Date.now();
     const summary = await retryParse(async () => {
       const raw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
       const parsed = parseKeyValueXml(raw);
       return parsed?.text ? parsed : null;
     }, MAX_PARSE_RETRIES, 'summary');
+    const tLlmEnd = Date.now();
+
+    runtime.logger.info({
+      ms: {
+        composeState: tLlmStart - tComposeStart,
+        llmSummary: tLlmEnd - tLlmStart,
+        total: tLlmEnd - tComposeStart,
+      },
+    }, '[Research:Latency] Summary generation');
 
     if (summary?.text) {
       return {
@@ -497,14 +654,26 @@ export class ResearchMessageService implements IMessageService {
    * Clear all messages from a channel.
    */
   async clearChannel(runtime: IAgentRuntime, roomId: UUID, _channelId: string): Promise<void> {
-    const memories = await runtime.getMemoriesByRoomIds({
-      tableName: 'messages',
-      roomIds: [roomId],
-    });
-    for (const memory of memories) {
-      if (memory.id) {
-        try { await runtime.deleteMemory(memory.id); } catch { /* continue */ }
+    // Paginate in batches to avoid loading unbounded message history
+    const BATCH = 500;
+    let deleted = 0;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const batch = await runtime.getMemoriesByRoomIds({
+        tableName: 'messages',
+        roomIds: [roomId],
+        count: BATCH,
+      });
+      if (batch.length === 0) break;
+      for (const memory of batch) {
+        if (memory.id) {
+          try { await runtime.deleteMemory(memory.id); deleted++; } catch { /* continue */ }
+        }
       }
+      if (batch.length < BATCH) break; // last page
+    }
+    if (deleted > 0) {
+      runtime.logger.info({ roomId, deleted }, '[Research] Channel cleared');
     }
   }
 }

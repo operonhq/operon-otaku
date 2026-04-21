@@ -13,7 +13,7 @@
     "dev:watch": "turbo run dev --parallel",
     "prestart": "tsx scripts/setup-pg-cron.ts || exit 0",
     "start": "tsx scripts/patch-plugin-sql.ts && tsx scripts/patch-plugin-telegram.ts && tsx start-server.ts",
-    "postinstall": "tsx scripts/patch-plugin-sql.ts || exit 0 && tsx scripts/patch-plugin-telegram.ts || exit 0",
+    "postinstall": "tsx scripts/patch-plugin-sql.ts || true; tsx scripts/patch-plugin-telegram.ts || true",
     "build": "turbo run build && bun run build.ts",
     "build:all": "turbo run build",
     "build:backend": "bun run build.ts",
