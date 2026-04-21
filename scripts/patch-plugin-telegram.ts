@@ -52,16 +52,16 @@ const patches: Patch[] = [
     alreadyApplied: CORRECT_REGEX,
   },
 
-  // --- Patch 2: let /start continue through middleware chain to our message handler ---
+  // --- Patch 2: route /start directly through messageManager (bot.start consumes the command) ---
   {
-    name: 'bot.start pass-through (call next)',
+    name: 'bot.start direct handleMessage (signature)',
     find: 'this.bot?.start((ctx) => {',
-    replace: 'this.bot?.start(async (ctx, next) => {',
-    alreadyApplied: 'this.bot?.start(async (ctx, next)',
+    replace: 'this.bot?.start(async (ctx) => {',
+    alreadyApplied: 'this.bot?.start(async (ctx)',
     critical: true,
   },
   {
-    name: 'bot.start pass-through (await next)',
+    name: 'bot.start direct handleMessage (body)',
     find: [
       '      );',
       '    });',
@@ -69,11 +69,11 @@ const patches: Patch[] = [
     ].join('\n'),
     replace: [
       '      );',
-      '      await next();',
+      '      try { await this.messageManager.handleMessage(ctx); } catch (err) { logger3.error({ src: "plugin:telegram", error: err instanceof Error ? err.message : String(err) }, "Error handling /start via messageManager"); }',
       '    });',
       '    this.bot?.launch({',
     ].join('\n'),
-    alreadyApplied: 'await next();',
+    alreadyApplied: '"Error handling /start via messageManager"',
   },
 
   // --- Patch 4: receive callback_query updates from Telegram ---
