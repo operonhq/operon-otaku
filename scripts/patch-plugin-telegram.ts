@@ -61,7 +61,7 @@ const patches: Patch[] = [
     critical: true,
   },
   {
-    name: 'bot.start direct handleMessage (body)',
+    name: 'bot.start direct handleMessage + callback_query handler (in initializeBot)',
     find: [
       '      );',
       '    });',
@@ -70,6 +70,23 @@ const patches: Patch[] = [
     replace: [
       '      );',
       '      try { await this.messageManager.handleMessage(ctx); } catch (err) { logger3.error({ src: "plugin:telegram", error: err instanceof Error ? err.message : String(err) }, "Error handling /start via messageManager"); }',
+      '    });',
+      // SYNC: ALLOWED_CB must match EXAMPLE_PROMPTS in research-message-service.ts.
+      '    this.bot?.on("callback_query", async (ctx) => {',
+      '      try {',
+      '        const data = ctx.callbackQuery?.data;',
+      '        if (!data) { await ctx.answerCbQuery(); return; }',
+      '        var ALLOWED_CB = ["What\'s the cheapest way to swap ETH to USDC?", "Best way to bridge from Arbitrum to Base?", "Compare Aave and Compound yields", "Is Uniswap safe to use right now?", "Gas-optimized swap route for stablecoins"];',
+      '        if (ALLOWED_CB.indexOf(data) === -1) { await ctx.answerCbQuery(); logger3.warn({ src: "plugin:telegram", data: data }, "Unexpected callback_query data, ignoring"); return; }',
+      '        await ctx.answerCbQuery();',
+      '        const cbChat = ctx.callbackQuery.message?.chat;',
+      '        const cbFrom = ctx.callbackQuery.from;',
+      '        if (!cbChat || !cbFrom) return;',
+      '        Object.defineProperty(ctx, "message", { value: { message_id: Date.now(), date: Math.floor(Date.now() / 1000), chat: cbChat, from: cbFrom, text: data }, configurable: true });',
+      '        await this.messageManager.handleMessage(ctx);',
+      '      } catch (error) {',
+      '        logger3.error({ src: "plugin:telegram", agentId: this.runtime.agentId, error: error instanceof Error ? error.message : String(error) }, "Error handling callback query");',
+      '      }',
       '    });',
       '    this.bot?.launch({',
     ].join('\n'),
@@ -125,41 +142,7 @@ const patches: Patch[] = [
     critical: true,
   },
 
-  // --- Patch 6: route callback_query (button taps) through the message pipeline ---
-  // SYNC: ALLOWED_CB below must match EXAMPLE_PROMPTS in research-message-service.ts.
-  {
-    name: 'callback_query handler',
-    find: [
-      '"Error handling reaction");',
-      '      }',
-      '    });',
-      '  }',
-    ].join('\n'),
-    replace: [
-      '"Error handling reaction");',
-      '      }',
-      '    });',
-      '    this.bot?.on("callback_query", async (ctx) => {',
-      '      try {',
-      '        const data = ctx.callbackQuery?.data;',
-      '        if (!data) { await ctx.answerCbQuery(); return; }',
-      '        var ALLOWED_CB = ["What\'s the cheapest way to swap ETH to USDC?", "Best way to bridge from Arbitrum to Base?", "Compare Aave and Compound yields", "Is Uniswap safe to use right now?", "Gas-optimized swap route for stablecoins"];',
-      '        if (ALLOWED_CB.indexOf(data) === -1) { await ctx.answerCbQuery(); logger3.warn({ src: "plugin:telegram", data: data }, "Unexpected callback_query data, ignoring"); return; }',
-      '        await ctx.answerCbQuery();',
-      '        const cbChat = ctx.callbackQuery.message?.chat;',
-      '        const cbFrom = ctx.callbackQuery.from;',
-      '        if (!cbChat || !cbFrom) return;',
-      '        Object.defineProperty(ctx, "message", { value: { message_id: Date.now(), date: Math.floor(Date.now() / 1000), chat: cbChat, from: cbFrom, text: data }, configurable: true });',
-      '        await this.messageManager.handleMessage(ctx);',
-      '      } catch (error) {',
-      '        logger3.error({ src: "plugin:telegram", agentId: this.runtime.agentId, error: error instanceof Error ? error.message : String(error) }, "Error handling callback query");',
-      '      }',
-      '    });',
-      '  }',
-    ].join('\n'),
-    alreadyApplied: '"Error handling callback query"',
-    critical: true,
-  },
+  // Patch 6 removed: callback_query handler moved to initializeBot (patch 2 body) to bypass middleware chain.
 ];
 
 for (const filePath of files) {
