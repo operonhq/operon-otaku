@@ -109,7 +109,11 @@ export class ResearchMessageService implements IMessageService {
       `[Research] Processing: "${truncateToCompleteSentence(message.content.text || '', 80)}"`
     );
 
-    // 2. Save incoming message to memory
+    // 2. Handle /start, /help commands before anything else (no shouldRespond gate)
+    const commandResult = await this.handleCommandsAndWelcome(runtime, message, callback);
+    if (commandResult) return commandResult;
+
+    // 3. Save incoming message to memory
     if (message.id) {
       const existing = await runtime.getMemoryById(message.id);
       if (!existing) {
@@ -121,7 +125,7 @@ export class ResearchMessageService implements IMessageService {
       message.id = id;
     }
 
-    // 3. shouldRespond check
+    // 4. shouldRespond check
     const room = await runtime.getRoom(message.roomId);
     const metadata = message.content.metadata as Record<string, unknown> | undefined;
     const mentionContext: MentionContext | undefined = metadata
@@ -151,10 +155,6 @@ export class ResearchMessageService implements IMessageService {
       const shouldAnswer = typeof action === 'string' && !['IGNORE', 'NONE', 'STOP'].includes(action.toUpperCase());
       if (!shouldAnswer) return emptyResult;
     }
-
-    // 3.5. Handle /start, /help commands and first-message welcome
-    const commandResult = await this.handleCommandsAndWelcome(runtime, message, callback);
-    if (commandResult) return commandResult;
 
     // 4. Multi-step tool loop
     const { traces, state: loopState } = await this.runToolLoop(runtime, message);
