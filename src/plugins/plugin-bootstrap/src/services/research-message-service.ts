@@ -508,9 +508,15 @@ export class ResearchMessageService implements IMessageService {
           }
         }
 
-        // Store params in state for action handlers
-        if (Object.keys(actionParams).length > 0) {
-          state.data.actionParams = actionParams;
+        // Save previous params so we can restore after processActions
+        const prevStateParams = state.data.actionParams;
+        const prevContentParams = (message.content as Record<string, unknown>).actionParams;
+
+        // Store params for action handlers via both channels
+        const hasParams = Object.keys(actionParams).length > 0;
+        state.data.actionParams = hasParams ? actionParams : undefined;
+        if (hasParams) {
+          (message.content as Record<string, unknown>).actionParams = actionParams;
         }
 
         const actionContent: Content = {
@@ -518,23 +524,29 @@ export class ResearchMessageService implements IMessageService {
           actions: [cleanAction],
           thought: thought ?? '',
         };
-        if (Object.keys(actionParams).length > 0) {
+        if (hasParams) {
           (actionContent as Content & { actionParams: unknown; actionInput: unknown }).actionParams = actionParams;
           (actionContent as Content & { actionParams: unknown; actionInput: unknown }).actionInput = actionParams;
         }
 
-        await runtime.processActions(
-          message,
-          [{
-            id: v4() as UUID,
-            entityId: runtime.agentId,
-            roomId: message.roomId,
-            createdAt: Date.now(),
-            content: actionContent,
-          }],
-          state,
-          async () => { return []; }
-        );
+        try {
+          await runtime.processActions(
+            message,
+            [{
+              id: v4() as UUID,
+              entityId: runtime.agentId,
+              roomId: message.roomId,
+              createdAt: Date.now(),
+              content: actionContent,
+            }],
+            state,
+            async () => { return []; }
+          );
+        } finally {
+          // Restore both channels to avoid leaking params into next iteration
+          state.data.actionParams = prevStateParams;
+          (message.content as Record<string, unknown>).actionParams = prevContentParams;
+        }
 
         // Get results via official API
         let lastResult: { success: boolean; text?: string; error?: string | Error } | null = null;

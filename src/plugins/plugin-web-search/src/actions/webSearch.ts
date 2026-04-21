@@ -9,6 +9,7 @@ import {
 } from "@elizaos/core";
 import { TavilyService } from "../services/tavilyService";
 import type { SearchResult } from "../types";
+import { resolveActionParams, extractString, extractPositiveInt, capQueryLength } from "../actionHelpers";
 
 const DEFAULT_MAX_WEB_SEARCH_CHARS = 16000;
 
@@ -112,15 +113,21 @@ export const webSearch: Action = {
                 throw new Error("TavilyService not initialized");
             }
 
-            // Read parameters from state (extracted by multiStepDecisionTemplate)
-            const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-            
-            // Support both actionParams (new pattern) and webSearch (legacy pattern)
-            const params = composedState?.data?.actionParams || composedState?.data?.webSearch || {};
-            
-            // Extract and validate query parameter (required)
-            const query: string | undefined = params?.query?.trim();
-            
+            const params = await resolveActionParams(runtime, message, _state, "webSearch");
+
+            // Extract query: from params first, then fall back to user's message text
+            // (if the LLM chose WEB_SEARCH, the user's message IS the search intent)
+            let query = extractString(params?.query);
+            if (!query) {
+                query = extractString(message.content?.text);
+                if (query) {
+                    logger.info(`[WEB_SEARCH] No 'query' param from LLM; using message text as query`);
+                }
+            }
+            if (query) {
+                query = capQueryLength(query);
+            }
+
             if (!query) {
                 const errorMsg = "Missing required parameter 'query'. Please specify what to search for.";
                 logger.error(`[WEB_SEARCH] ${errorMsg}`);
@@ -130,19 +137,19 @@ export const webSearch: Action = {
                     error: "missing_required_parameter",
                 };
                 if (callback) {
-                    callback({ 
-                        text: emptyResult.text, 
-                        content: { error: "missing_required_parameter", details: errorMsg } 
+                    callback({
+                        text: emptyResult.text,
+                        content: { error: "missing_required_parameter", details: errorMsg }
                     });
                 }
                 return emptyResult;
             }
 
-            const source = params?.source?.trim();
-            const topic = params?.topic === "finance" 
-                ? "finance" 
+            const source = extractString(params?.source);
+            const topic = params?.topic === "finance"
+                ? "finance"
                 : "general";
-            const maxResults = params?.max_results ? Math.min(Math.max(1, params.max_results), 20) : 5;
+            const maxResults = extractPositiveInt(params?.max_results, 1, 20, 5);
             const searchDepth = params?.search_depth === "advanced" ? "advanced" : "basic";
 
             // Build enhanced query with source if provided
@@ -220,32 +227,32 @@ export const webSearch: Action = {
         } catch (error) {
             const errMsg = error instanceof Error ? error.message : String(error);
             logger.error(`[WEB_SEARCH] Action failed: ${errMsg}`);
-            
-            // Try to capture input params even in failure
-            const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-            const params = composedState?.data?.actionParams || composedState?.data?.webSearch || {};
-            const failureInputParams = {
-                query: params?.query,
-                topic: params?.topic,
-                source: params?.source,
-                max_results: params?.max_results,
-                search_depth: params?.search_depth,
-                time_range: params?.time_range,
-                start_date: params?.start_date,
-                end_date: params?.end_date,
-            };
-            
+
+            // Best-effort capture of input params for diagnostics
+            let failureInputParams: Record<string, unknown> = {};
+            try {
+                const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
+                const p = composedState?.data?.actionParams || composedState?.data?.webSearch || {};
+                failureInputParams = {
+                    query: p?.query, topic: p?.topic, source: p?.source,
+                    max_results: p?.max_results, search_depth: p?.search_depth,
+                    time_range: p?.time_range, start_date: p?.start_date, end_date: p?.end_date,
+                };
+            } catch (innerErr) {
+                logger.warn(`[WEB_SEARCH] Could not capture input params for error report`);
+            }
+
             const errorResult: ActionResult = {
                 text: `Web search failed: ${errMsg}`,
                 success: false,
                 error: errMsg,
                 input: failureInputParams,
             } as ActionResult & { input: typeof failureInputParams };
-            
+
             if (callback) {
-                callback({ 
-                    text: errorResult.text, 
-                    content: { error: "web_search_failed", details: errMsg } 
+                callback({
+                    text: errorResult.text,
+                    content: { error: "web_search_failed", details: errMsg }
                 });
             }
             return errorResult;

@@ -10,6 +10,7 @@ import {
 import { TavilyService } from "../services/tavilyService";
 import { CoinDeskService } from "../services/coindeskService";
 import type { SearchResult } from "../types";
+import { resolveActionParams, extractString, extractPositiveInt, capQueryLength } from "../actionHelpers";
 
 const DEFAULT_MAX_CRYPTO_NEWS_CHARS = 20000;
 
@@ -118,11 +119,20 @@ export const cryptoNews: Action = {
         callback?: HandlerCallback
     ): Promise<ActionResult> => {
         try {
-            const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-            const params = composedState?.data?.actionParams || composedState?.data?.cryptoNews || {};
-            
-            const query: string | undefined = params?.query?.trim();
-            
+            const params = await resolveActionParams(runtime, message, _state, "cryptoNews");
+
+            // Extract query: from params first, then fall back to user's message text
+            let query = extractString(params?.query);
+            if (!query) {
+                query = extractString(message.content?.text);
+                if (query) {
+                    logger.info(`[CRYPTO_NEWS] No 'query' param from LLM; using message text as query`);
+                }
+            }
+            if (query) {
+                query = capQueryLength(query);
+            }
+
             if (!query) {
                 const errorMsg = "Missing required parameter 'query'. Please specify what crypto news to search for.";
                 logger.error(`[CRYPTO_NEWS] ${errorMsg}`);
@@ -132,17 +142,17 @@ export const cryptoNews: Action = {
                     error: "missing_required_parameter",
                 };
                 if (callback) {
-                    callback({ 
-                        text: emptyResult.text, 
-                        content: { error: "missing_required_parameter", details: errorMsg } 
+                    callback({
+                        text: emptyResult.text,
+                        content: { error: "missing_required_parameter", details: errorMsg }
                     });
                 }
                 return emptyResult;
             }
 
-            const sourceKey = params?.source?.toLowerCase().trim();
-            const timeRange = params?.time_range || "week";
-            const maxResults = params?.max_results ? Math.min(Math.max(1, params.max_results), 100) : 10;
+            const sourceKey = extractString(params?.source)?.toLowerCase();
+            const timeRange = extractString(params?.time_range) || "week";
+            const maxResults = extractPositiveInt(params?.max_results, 1, 100, 10);
             const searchDepth = params?.search_depth === "advanced" ? "advanced" : "basic";
             const categories = params?.categories;
             const includeBody = params?.include_body === true;
@@ -319,30 +329,31 @@ export const cryptoNews: Action = {
         } catch (error) {
             const errMsg = error instanceof Error ? error.message : String(error);
             logger.error(`[CRYPTO_NEWS] Action failed: ${errMsg}`);
-            
-            const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-            const params = composedState?.data?.actionParams || composedState?.data?.cryptoNews || {};
-            const failureInputParams = {
-                query: params?.query,
-                source: params?.source,
-                categories: params?.categories,
-                time_range: params?.time_range,
-                max_results: params?.max_results,
-                search_depth: params?.search_depth,
-                include_body: params?.include_body,
-            };
-            
+
+            let failureInputParams: Record<string, unknown> = {};
+            try {
+                const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
+                const p = composedState?.data?.actionParams || composedState?.data?.cryptoNews || {};
+                failureInputParams = {
+                    query: p?.query, source: p?.source, categories: p?.categories,
+                    time_range: p?.time_range, max_results: p?.max_results,
+                    search_depth: p?.search_depth, include_body: p?.include_body,
+                };
+            } catch (innerErr) {
+                logger.warn(`[CRYPTO_NEWS] Could not capture input params for error report`);
+            }
+
             const errorResult: ActionResult = {
                 text: `Crypto news search failed: ${errMsg}`,
                 success: false,
                 error: errMsg,
                 input: failureInputParams,
             } as ActionResult & { input: typeof failureInputParams };
-            
+
             if (callback) {
-                callback({ 
-                    text: errorResult.text, 
-                    content: { error: "crypto_news_failed", details: errMsg } 
+                callback({
+                    text: errorResult.text,
+                    content: { error: "crypto_news_failed", details: errMsg }
                 });
             }
             return errorResult;

@@ -8,6 +8,7 @@ import {
     logger,
 } from "@elizaos/core";
 import { FirecrawlService } from "../services/firecrawlService";
+import { resolveActionParams, extractString } from "../actionHelpers";
 
 const DEFAULT_MAX_FETCH_CHARS = 32000;
 
@@ -103,14 +104,10 @@ export const webFetch: Action = {
                 throw new Error("FIRECRAWL_API_KEY is not configured");
             }
 
-            // Read parameters from state (extracted by multiStepDecisionTemplate)
-            const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-            
-            // Support both actionParams (new pattern) and webFetch (legacy pattern)
-            const params = composedState?.data?.actionParams || composedState?.data?.webFetch || {};
-            
+            const params = await resolveActionParams(runtime, message, _state, "webFetch");
+
             // Extract and validate URL parameter (required)
-            const url: string | undefined = params?.url?.trim();
+            const url = extractString(params?.url);
             
             if (!url) {
                 const errorMsg = "Missing required parameter 'url'. Please specify the URL to fetch.";
@@ -227,27 +224,29 @@ export const webFetch: Action = {
         } catch (error) {
             const errMsg = error instanceof Error ? error.message : String(error);
             logger.error(`[WEB_FETCH] Action failed: ${errMsg}`);
-            
-            // Try to capture input params even in failure
-            const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
-            const params = composedState?.data?.actionParams || composedState?.data?.webFetch || {};
-            const failureInputParams = {
-                url: params?.url,
-                formats: params?.formats,
-                onlyMainContent: params?.onlyMainContent,
-            };
-            
+
+            let failureInputParams: Record<string, unknown> = {};
+            try {
+                const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
+                const p = composedState?.data?.actionParams || composedState?.data?.webFetch || {};
+                failureInputParams = {
+                    url: p?.url, formats: p?.formats, onlyMainContent: p?.onlyMainContent,
+                };
+            } catch (innerErr) {
+                logger.warn(`[WEB_FETCH] Could not capture input params for error report`);
+            }
+
             const errorResult: ActionResult = {
                 text: `Web fetch failed: ${errMsg}`,
                 success: false,
                 error: errMsg,
                 input: failureInputParams,
             } as ActionResult & { input: typeof failureInputParams };
-            
+
             if (callback) {
-                callback({ 
-                    text: errorResult.text, 
-                    content: { error: "web_fetch_failed", details: errMsg } 
+                callback({
+                    text: errorResult.text,
+                    content: { error: "web_fetch_failed", details: errMsg }
                 });
             }
             return errorResult;
