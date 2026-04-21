@@ -52,7 +52,31 @@ const patches: Patch[] = [
     alreadyApplied: CORRECT_REGEX,
   },
 
-  // --- Patch 2: receive callback_query updates from Telegram ---
+  // --- Patch 2: let /start continue through middleware chain to our message handler ---
+  {
+    name: 'bot.start pass-through (call next)',
+    find: 'this.bot?.start((ctx) => {',
+    replace: 'this.bot?.start(async (ctx, next) => {',
+    alreadyApplied: 'this.bot?.start(async (ctx, next)',
+    critical: true,
+  },
+  {
+    name: 'bot.start pass-through (await next)',
+    find: [
+      '      );',
+      '    });',
+      '    this.bot?.launch({',
+    ].join('\n'),
+    replace: [
+      '      );',
+      '      await next();',
+      '    });',
+      '    this.bot?.launch({',
+    ].join('\n'),
+    alreadyApplied: 'await next();',
+  },
+
+  // --- Patch 4: receive callback_query updates from Telegram ---
   {
     name: 'allowed updates (add callback_query)',
     find: 'allowedUpdates: ["message", "message_reaction"]',
