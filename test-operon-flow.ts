@@ -48,7 +48,7 @@ async function main() {
   if (data.decision === 'filled') {
     console.log('PLACEMENT FILLED');
     console.log(`  Winner: ${data.placement.service}`);
-    console.log(`  ScoutScore: ${data.placement.scoutScore}`);
+    console.log(`  Trust score: ${data.placement.scoutScore}`);
     console.log(`  Rank: ${data.placement.rank}`);
     console.log(`  Bid: ${data.placement.bidPrice}`);
     console.log(`  Routable: ${data.placement.routable}`);
