@@ -204,7 +204,7 @@ KEY NUMBERS TO REFERENCE: 31% of developers building agents, ~0% monetized. Chat
       {
         name: "Rev",
         content: {
-          text: "Open ad network for AI agents. Your agent generates a response and declares an ad slot exists. Operon runs a quality-weighted auction across available demand. Winning placement gets merged as a native recommendation. The auction formula weights trust (60%) over bid price (40%). Publisher SDK is live for ElizaOS.\n\nYou're looking at a live example right now. The items marked 'Sponsored' in my responses are Operon placements. The rest is organic.",
+          text: "Open ad network for AI agents. Your agent generates a response and declares an ad slot exists. Operon runs a quality-weighted auction across available demand. Winning placement gets merged as a native recommendation. Trust outweighs bid price in the auction. Publisher SDK is live for ElizaOS.\n\nYou're looking at a live example right now. The items marked 'Sponsored' in my responses are Operon placements. The rest is organic.",
         },
       },
     ],
