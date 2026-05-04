@@ -63,6 +63,21 @@ if (!character) {
   );
 }
 
+// @elizaos/plugin-anthropic ships hardcoded defaults that 404 against the current
+// Anthropic API. Inject current stable model IDs so the bot boots without env overrides.
+const existingSettings = character.settings as Record<string, unknown> | undefined;
+character.settings = {
+  ...character.settings,
+  ANTHROPIC_SMALL_MODEL:
+    process.env.ANTHROPIC_SMALL_MODEL?.trim() ||
+    (existingSettings?.ANTHROPIC_SMALL_MODEL as string | undefined) ||
+    "claude-haiku-4-5-20251001",
+  ANTHROPIC_LARGE_MODEL:
+    process.env.ANTHROPIC_LARGE_MODEL?.trim() ||
+    (existingSettings?.ANTHROPIC_LARGE_MODEL as string | undefined) ||
+    "claude-sonnet-4-6",
+};
+
 // Log character and integration status at module load time (start-server.ts doesn't call init)
 logger.info({ name: character.name, key: characterKey }, "Character loaded:");
 logger.info({ discord: discordEnabled, telegram: telegramEnabled }, "Integrations:");
